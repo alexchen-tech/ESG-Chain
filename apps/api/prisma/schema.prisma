@@ -1,0 +1,325 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  buyer
+  sustain
+  comply
+  analyst
+  supplier
+  sup_esg
+}
+
+enum SupplierTier {
+  tier1
+  tier2
+  tier3
+}
+
+enum SupplierStatus {
+  active
+  inactive
+  pending
+  suspended
+}
+
+enum RiskLevel {
+  low
+  medium
+  high
+  critical
+}
+
+enum SAQStatus {
+  draft
+  sent
+  in_progress
+  submitted
+  reviewed
+  closed
+}
+
+enum CAPStatus {
+  open
+  in_progress
+  verified
+  closed
+  overdue
+}
+
+enum PCFStatus {
+  draft
+  submitted
+  verified
+}
+
+enum DecarbStatus {
+  baseline
+  planning
+  committed
+  on_track
+  off_track
+  achieved
+}
+
+enum ReportType {
+  csrd
+  cbam
+  cdp
+  custom
+}
+
+enum ReportStatus {
+  draft
+  review
+  assurance
+  final
+}
+
+model User {
+  id         String   @id @default(cuid())
+  email      String   @unique
+  name       String
+  password   String
+  role       UserRole @default(analyst)
+  status     String   @default("active")
+  avatarUrl  String?
+  supplierId String?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  saqsCreated    SAQ[]    @relation("SAQCreatedBy")
+  reportsCreated Report[] @relation("ReportCreatedBy")
+  notifications  Notification[]
+}
+
+model Supplier {
+  id              String         @id @default(cuid())
+  code            String         @unique
+  name            String
+  nameEn          String?
+  tier            SupplierTier   @default(tier1)
+  country         String
+  industry        String
+  status          SupplierStatus @default(active)
+  riskLevel       RiskLevel      @default(low)
+  riskScore       Float?
+  carbonIntensity Float?
+  contactEmail    String?
+  website         String?
+  employeeCount   Int?
+  annualRevenue   Float?
+  certifications  String[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  contacts    SupplierContact[]
+  users       User[]
+  saqs        SAQ[]
+  caps        CAP[]
+  tradeGoods  TradeGood[]
+  pcfRecords  PCFRecord[]
+  decarbPlans DecarbPlan[]
+}
+
+model SupplierContact {
+  id         String   @id @default(cuid())
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  name       String
+  title      String
+  email      String
+  phone      String?
+  isPrimary  Boolean  @default(false)
+}
+
+model SAQTemplate {
+  id        String   @id @default(cuid())
+  name      String
+  nameZh    String
+  category  String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  questions SAQQuestion[]
+  saqs      SAQ[]
+}
+
+model SAQQuestion {
+  id         String   @id @default(cuid())
+  templateId String
+  template   SAQTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  section    String
+  question   String
+  questionZh String
+  type       String
+  required   Boolean  @default(true)
+  weight     Float    @default(1.0)
+  order      Int
+
+  responses SAQResponse[]
+}
+
+model SAQ {
+  id          String    @id @default(cuid())
+  supplierId  String
+  supplier    Supplier  @relation(fields: [supplierId], references: [id])
+  templateId  String
+  template    SAQTemplate @relation(fields: [templateId], references: [id])
+  period      String
+  status      SAQStatus @default(draft)
+  score       Float?
+  sentAt      DateTime?
+  submittedAt DateTime?
+  dueDate     DateTime
+  createdById String
+  createdBy   User      @relation("SAQCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  responses SAQResponse[]
+  caps      CAP[]
+}
+
+model SAQResponse {
+  id         String      @id @default(cuid())
+  saqId      String
+  saq        SAQ         @relation(fields: [saqId], references: [id], onDelete: Cascade)
+  questionId String
+  question   SAQQuestion @relation(fields: [questionId], references: [id])
+  answer     String
+  evidence   String?
+  comment    String?
+}
+
+model CAP {
+  id         String    @id @default(cuid())
+  supplierId String
+  supplier   Supplier  @relation(fields: [supplierId], references: [id])
+  saqId      String?
+  saq        SAQ?      @relation(fields: [saqId], references: [id])
+  title      String
+  status     CAPStatus @default(open)
+  riskLevel  RiskLevel @default(medium)
+  dueDate    DateTime
+  assigneeId String?
+  closedAt   DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  findings CAPFinding[]
+}
+
+model CAPFinding {
+  id             String   @id @default(cuid())
+  capId          String
+  cap            CAP      @relation(fields: [capId], references: [id], onDelete: Cascade)
+  category       String
+  description    String
+  recommendation String
+  evidence       String?
+  resolvedAt     DateTime?
+}
+
+model TradeGood {
+  id              String   @id @default(cuid())
+  supplierId      String
+  supplier        Supplier @relation(fields: [supplierId], references: [id])
+  name            String
+  nameZh          String?
+  hsCode          String
+  cbamApplicable  Boolean  @default(false)
+  cbamSector      String?
+  annualVolume    Float?
+  unit            String?
+  countryOfOrigin String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  pcfRecords PCFRecord[]
+}
+
+model PCFRecord {
+  id             String    @id @default(cuid())
+  tradeGoodId    String?
+  tradeGood      TradeGood? @relation(fields: [tradeGoodId], references: [id])
+  supplierId     String
+  supplier       Supplier  @relation(fields: [supplierId], references: [id])
+  productName    String
+  functionalUnit String
+  scope1KgCO2e   Float     @default(0)
+  scope2KgCO2e   Float     @default(0)
+  scope3KgCO2e   Float     @default(0)
+  totalKgCO2e    Float     @default(0)
+  year           Int
+  status         PCFStatus @default(draft)
+  methodology    String?
+  verifiedById   String?
+  verifiedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model DecarbPlan {
+  id                String       @id @default(cuid())
+  supplierId        String
+  supplier          Supplier     @relation(fields: [supplierId], references: [id])
+  baselineYear      Int
+  targetYear        Int
+  baselineEmissions Float
+  targetReduction   Float
+  sbtiAligned       Boolean      @default(false)
+  status            DecarbStatus @default(baseline)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  milestones DecarbMilestone[]
+}
+
+model DecarbMilestone {
+  id               String     @id @default(cuid())
+  planId           String
+  plan             DecarbPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  year             Int
+  targetEmissions  Float
+  actualEmissions  Float?
+  initiative       String
+  status           String     @default("planned")
+}
+
+model Report {
+  id             String       @id @default(cuid())
+  type           ReportType
+  title          String
+  period         String
+  status         ReportStatus @default(draft)
+  createdById    String
+  createdBy      User         @relation("ReportCreatedBy", fields: [createdById], references: [id])
+  assuranceLevel String?
+  publishedAt    DateTime?
+  fileUrl        String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  body      String
+  isRead    Boolean  @default(false)
+  linkTo    String?
+  createdAt DateTime @default(now())
+}
