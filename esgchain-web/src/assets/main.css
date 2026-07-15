@@ -1,0 +1,48 @@
+@import './components.css';
+
+/* Warm Paper Light 設計系統 */
+:root {
+  --bg: #f5f3ee;
+  --surface: #ffffff;
+  --surface-2: #f0ede6;
+  --border: #e2ddd6;
+  --text-primary: #1c1917;
+  --text-secondary: #78716c;
+  --accent: #1a4d3e;
+  --accent-hover: #154033;
+  --sidebar-bg: #1a1714;
+  --sidebar-text: #e7e5e4;
+  --sidebar-active: #1a4d3e;
+
+  --font-sans: 'Noto Sans TC', system-ui, sans-serif;
+  --font-title: 'Syne', system-ui, sans-serif;
+  --font-mono: 'Fira Code', 'Courier New', monospace;
+
+  /* Risk level color tokens */
+  --risk-extreme-bg: #fecaca;   --risk-extreme-color: #991b1b;
+  --risk-high-bg: #fed7aa;      --risk-high-color: #9a3412;
+  --risk-medium-bg: #fef9c3;    --risk-medium-color: #854d0e;
+  --risk-low-bg: #bbf7d0;       --risk-low-color: #15803d;
+  --risk-very-low-bg: #dcfce7;  --risk-very-low-color: #166534;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #app {
+  height: 100%;
+  font-family: var(--font-sans);
+  background-color: var(--bg);
+  color: var(--text-primary);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+.font-title {
+  font-family: var(--font-title);
+}

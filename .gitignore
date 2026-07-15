@@ -1,0 +1,22 @@
+node_modules
+
+# JWT 金鑰（絕不入版控）
+keys/*.pem
+
+# Laravel
+esgchain-api/.env
+esgchain-api/vendor/
+esgchain-api/storage/logs/*.log
+
+# FastAPI
+esgchain-ai/.env
+esgchain-ai/__pycache__/
+esgchain-ai/**/__pycache__/
+esgchain-ai/.venv/
+
+# Vue 3
+esgchain-web/.env.local
+esgchain-web/dist/
+
+# OS
+.DS_Store

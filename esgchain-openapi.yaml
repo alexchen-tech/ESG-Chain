@@ -1,0 +1,1922 @@
+openapi: 3.1.0
+
+info:
+  title: ESG·Chain 永續供應鏈管理平台 API
+  version: 2.1.0
+  description: |
+    ESG·Chain 業務後端 REST API（Laravel 12.11.1）。
+
+    **認證**：所有端點（除 `/auth/*`）須在 Header 帶入 `Authorization: Bearer {access_token}`。
+    Token 由 `POST /api/v1/auth/login` 取得，採用 RS256 JWT。
+
+    **回應格式**：所有回應統一包裹於 `{ success, data, message }` 結構；
+    列表回應額外包含 `pagination` 物件。
+
+    **狀態機注意**：M2 問卷狀態 `under_review` 時，供應商角色（SUPPLIER / SUP_ESG）
+    存取寫入端點一律回傳 **403 Forbidden**。
+
+    **GP 維度**：地緣政治風險（GP）為獨立第四評分維度，不隸屬 E/S/G 任何一者。
+
+  contact:
+    name: Carbontact — ESG·Chain 開發團隊
+    email: alex.chen@carbontact.com
+
+servers:
+  - url: https://api.esgchain.carbontact.com/api/v1
+    description: 正式環境
+  - url: http://localhost:8000/api/v1
+    description: 本地開發環境
+
+tags:
+  - name: Auth
+    description: 認證與 Token 管理
+  - name: Suppliers
+    description: M1 供應商主資料管理
+  - name: Questionnaires
+    description: M2 ESG 問卷作業管理（七狀態生命週期）
+  - name: Risk
+    description: M3 風險評估（E/S/G/GP 四維度）
+  - name: PCF
+    description: M5 產品碳足跡計算
+  - name: Reports
+    description: M7 Scope 3 排放報告
+  - name: Settings
+    description: M9 系統設定（問卷範本、供應商分組、SASB 分類）
+
+# ─────────────────────────────────────────
+# SECURITY
+# ─────────────────────────────────────────
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: RS256 JWT，由 POST /auth/login 取得
+
+  # ─── COMMON PARAMETERS ───
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: 資源 UUID
+
+    PageQuery:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+        minimum: 1
+
+    PerPageQuery:
+      name: per_page
+      in: query
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+
+  # ─── REUSABLE SCHEMAS ───
+  schemas:
+
+    # ── Pagination ──
+    Pagination:
+      type: object
+      required: [current_page, per_page, total, last_page]
+      properties:
+        current_page:
+          type: integer
+          example: 1
+        per_page:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 175
+        last_page:
+          type: integer
+          example: 9
+
+    # ── Standard Responses ──
+    SuccessResponse:
+      type: object
+      required: [success, data, message]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+        message:
+          type: string
+          example: 操作成功
+
+    ErrorResponse:
+      type: object
+      required: [success, error_code, message]
+      properties:
+        success:
+          type: boolean
+          example: false
+        error_code:
+          type: string
+          enum:
+            - VALIDATION_ERROR
+            - UNAUTHORIZED
+            - TOKEN_EXPIRED
+            - FORBIDDEN
+            - NOT_FOUND
+            - DUPLICATE_ENTRY
+            - BUSINESS_ERROR
+            - SERVER_ERROR
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: 輸入資料有誤
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          example:
+            email: ["email 格式不正確"]
+
+    # ── Auth ──
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: buyer@carbontact.com
+        password:
+          type: string
+          format: password
+          example: "••••••••"
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: RS256 JWT，TTL 60 分鐘
+        refresh_token:
+          type: string
+          description: Refresh Token，TTL 7 天
+        token_type:
+          type: string
+          example: bearer
+        expires_in:
+          type: integer
+          example: 3600
+
+    # ── Supplier ──
+    Supplier:
+      type: object
+      required: [id, name, code, country_code, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: 興豐紡織股份有限公司
+        code:
+          type: string
+          example: SUP-00123
+        country_code:
+          type: string
+          minLength: 2
+          maxLength: 2
+          example: TW
+          description: ISO 3166-1 alpha-2
+        sasb_industry_id:
+          type: string
+          format: uuid
+          nullable: true
+        supplier_group_id:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive, suspended]
+          example: active
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-01-15T08:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+
+    SupplierCreateRequest:
+      type: object
+      required: [name, code, country_code]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        code:
+          type: string
+          maxLength: 100
+        country_code:
+          type: string
+          minLength: 2
+          maxLength: 2
+        sasb_industry_id:
+          type: string
+          format: uuid
+        supplier_group_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [active, inactive, suspended]
+          default: active
+
+    RiskSummary:
+      type: object
+      description: E/S/G/GP 四維度風險摘要。GP 為獨立第四維度，不得合併至 G。
+      required: [supplier_id, e, s, g, gp, assessed_at]
+      properties:
+        supplier_id:
+          type: string
+          format: uuid
+        e:
+          $ref: '#/components/schemas/RiskDimensionScore'
+        s:
+          $ref: '#/components/schemas/RiskDimensionScore'
+        g:
+          $ref: '#/components/schemas/RiskDimensionScore'
+        gp:
+          $ref: '#/components/schemas/RiskDimensionScore'
+          description: 地緣政治風險（獨立維度）
+        assessed_at:
+          type: string
+          format: date-time
+
+    RiskDimensionScore:
+      type: object
+      required: [probability, impact, score, level]
+      properties:
+        probability:
+          type: integer
+          minimum: 1
+          maximum: 5
+        impact:
+          type: integer
+          minimum: 1
+          maximum: 5
+        score:
+          type: integer
+          minimum: 1
+          maximum: 25
+          description: probability × impact
+        level:
+          type: string
+          enum: [very_low, low, medium, high, extreme]
+
+    # ── Questionnaire ──
+    QuestionnaireStatus:
+      type: string
+      enum:
+        - not_started
+        - in_progress
+        - submitted
+        - under_review
+        - review_returned
+        - completed
+        - reviewed
+      description: |
+        問卷七狀態：
+        - `not_started`：已發送，未開始填寫
+        - `in_progress`：填寫中
+        - `submitted`：已提交，待審核
+        - `under_review`：審核進行中（供應商存取寫入端點 → 403）
+        - `review_returned`：退回修改
+        - `completed`：審核通過
+        - `reviewed`：已複核（特殊終態）
+
+    Questionnaire:
+      type: object
+      required: [id, supplier_id, template_id, status, is_editable, round, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        supplier_id:
+          type: string
+          format: uuid
+        template_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          $ref: '#/components/schemas/QuestionnaireStatus'
+        is_editable:
+          type: boolean
+          description: |
+            `false` 當 status 為 under_review / completed / reviewed。
+            前端應在 isEditable=false 時全表單 disabled。
+        round:
+          type: integer
+          minimum: 1
+          example: 1
+        deadline:
+          type: string
+          format: date
+          nullable: true
+          description: 截止日期，顯示格式 YYYY/MM/DD
+          example: "2024-06-30"
+        submitted_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2024-03-14T16:00:00Z"
+        review_started_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: under_review 時自動記錄
+        reviewed_by_id:
+          type: string
+          format: uuid
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    QuestionnaireSendRequest:
+      type: object
+      required: [supplier_ids, template_id]
+      properties:
+        supplier_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+          description: 發送對象供應商 UUID 列表
+        template_id:
+          type: string
+          format: uuid
+        deadline:
+          type: string
+          format: date
+          description: 截止日期
+        project_id:
+          type: string
+          format: uuid
+          nullable: true
+
+    QuestionnaireReturnRequest:
+      type: object
+      required: [comment]
+      properties:
+        comment:
+          type: string
+          minLength: 1
+          description: 退回原因（必填）
+          example: 請補充 2023 年度碳排放數據與佐證文件
+
+    QuestionnaireCounts:
+      type: object
+      required: [just_submitted_count, submitted_count]
+      properties:
+        just_submitted_count:
+          type: integer
+          description: |
+            管線計數：僅 status=submitted 的數量。
+            反映當前待審隊列壓力。
+          example: 24
+        submitted_count:
+          type: integer
+          description: |
+            累計 KPI：status IN (submitted, under_review, review_returned, completed, reviewed)。
+            反映歷史總提交量。
+          example: 187
+
+    # ── Risk Matrix ──
+    RiskMatrixCell:
+      type: object
+      required: [probability, impact, risk_level, supplier_count, cell_score]
+      properties:
+        probability:
+          type: integer
+          minimum: 1
+          maximum: 5
+        impact:
+          type: integer
+          minimum: 1
+          maximum: 5
+        risk_level:
+          type: string
+          enum: [very_low, low, medium, high, extreme]
+        supplier_count:
+          type: integer
+          minimum: 0
+        cell_score:
+          type: integer
+          minimum: 1
+          maximum: 25
+
+    RiskMatrixResponse:
+      type: object
+      required: [dimension, matrix, summary]
+      properties:
+        dimension:
+          type: string
+          enum: [E, S, G, GP]
+          description: GP = 地緣政治風險（獨立維度）
+        matrix:
+          type: array
+          items:
+            $ref: '#/components/schemas/RiskMatrixCell'
+        summary:
+          type: object
+          properties:
+            extreme_count:
+              type: integer
+            high_count:
+              type: integer
+            medium_count:
+              type: integer
+            low_count:
+              type: integer
+            very_low_count:
+              type: integer
+            total:
+              type: integer
+
+    RiskAssessment:
+      type: object
+      required: [id, supplier_id, e_probability, e_impact, s_probability, s_impact, g_probability, g_impact, gp_probability, gp_impact, assessed_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        supplier_id:
+          type: string
+          format: uuid
+        e_probability:
+          type: integer
+          minimum: 1
+          maximum: 5
+        e_impact:
+          type: integer
+          minimum: 1
+          maximum: 5
+        s_probability:
+          type: integer
+          minimum: 1
+          maximum: 5
+        s_impact:
+          type: integer
+          minimum: 1
+          maximum: 5
+        g_probability:
+          type: integer
+          minimum: 1
+          maximum: 5
+        g_impact:
+          type: integer
+          minimum: 1
+          maximum: 5
+        gp_probability:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: 地緣政治風險概率（獨立維度）
+        gp_impact:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: 地緣政治風險影響（獨立維度）
+        assessed_at:
+          type: string
+          format: date-time
+
+    # ── PCF ──
+    PcfCalculateRequest:
+      type: object
+      required: [supplier_ids]
+      properties:
+        supplier_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+        product_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: 指定商品，空陣列表示計算該供應商所有商品
+
+    PcfTaskStatus:
+      type: object
+      required: [task_id, status]
+      properties:
+        task_id:
+          type: string
+          example: "a3f8b1c2-..."
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+        result_count:
+          type: integer
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+
+    # ── Scope 3 Report ──
+    Scope3Report:
+      type: object
+      properties:
+        reporting_year:
+          type: integer
+          example: 2024
+        total_co2e:
+          type: number
+          description: 總排放量 kg CO2e
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/Scope3Category'
+
+    Scope3Category:
+      type: object
+      properties:
+        category_number:
+          type: integer
+          minimum: 1
+          maximum: 15
+        category_name:
+          type: string
+          example: 採購商品和服務
+        co2e:
+          type: number
+          description: kg CO2e
+
+    # ── Settings ──
+    QuestionnaireTemplate:
+      type: object
+      required: [id, name, version, is_active, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: 2025 年度 T1 供應商 ESG 評估範本
+        sasb_industry_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 適用產業（null = 通用範本）
+        version:
+          type: string
+          example: "3.0.0"
+        is_active:
+          type: boolean
+        created_by_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    SupplierGroup:
+      type: object
+      required: [id, name, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: T1 關鍵供應商
+        description:
+          type: string
+          nullable: true
+
+    SasbIndustry:
+      type: object
+      required: [id, sector, industry, code]
+      properties:
+        id:
+          type: string
+          format: uuid
+        sector:
+          type: string
+          example: Technology & Communications
+        industry:
+          type: string
+          example: Electronic Manufacturing Services & Original Design Manufacturing
+        code:
+          type: string
+          example: TC-ES
+
+  # ─── REUSABLE RESPONSES ───
+  responses:
+    Unauthorized:
+      description: 未認證（JWT 無效或未帶 Token）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error_code: UNAUTHORIZED
+            message: 請先登入
+
+    Forbidden:
+      description: 無權限存取（RBAC 或問卷 under_review 狀態限制）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error_code: FORBIDDEN
+            message: 問卷審核中，暫時無法編輯
+
+    NotFound:
+      description: 資源不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error_code: NOT_FOUND
+            message: 資源不存在
+
+    UnprocessableEntity:
+      description: 表單驗證失敗
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error_code: VALIDATION_ERROR
+            message: 輸入資料有誤
+            errors:
+              name: ["name 為必填欄位"]
+
+    BusinessError:
+      description: 業務邏輯錯誤（含非法狀態轉換）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error_code: BUSINESS_ERROR
+            message: 問卷狀態不允許此操作
+
+# ─────────────────────────────────────────
+# PATHS
+# ─────────────────────────────────────────
+paths:
+
+  # ══════════════════════════════
+  # AUTH
+  # ══════════════════════════════
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: 登入
+      description: 驗證帳密，回傳 RS256 JWT Access Token + Refresh Token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        "200":
+          description: 登入成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/TokenResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: 換發 Token
+      description: 使用 Refresh Token 換發新的 Access Token（Rate limit：10 次/分鐘）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        "200":
+          description: 換發成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/TokenResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: 登出
+      description: 撤銷 Refresh Token（從 Redis 刪除 jti）
+      responses:
+        "200":
+          description: 登出成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  # ══════════════════════════════
+  # M1 SUPPLIERS
+  # ══════════════════════════════
+  /suppliers:
+    get:
+      tags: [Suppliers]
+      summary: 供應商列表
+      description: 伺服器端分頁，支援狀態篩選
+      parameters:
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/PerPageQuery'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, suspended]
+        - name: q
+          in: query
+          description: 名稱 / 代碼模糊搜尋
+          schema:
+            type: string
+        - name: supplier_group_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: sasb_industry_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: 供應商列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Supplier'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+                  message:
+                    type: string
+                    example: ""
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Suppliers]
+      summary: 新增供應商
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SupplierCreateRequest'
+      responses:
+        "201":
+          description: 建立成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Supplier'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /suppliers/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+
+    get:
+      tags: [Suppliers]
+      summary: 供應商詳細
+      responses:
+        "200":
+          description: 供應商詳細資料
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Supplier'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [Suppliers]
+      summary: 更新供應商
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SupplierCreateRequest'
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Supplier'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+    delete:
+      tags: [Suppliers]
+      summary: 刪除供應商（軟刪除）
+      responses:
+        "200":
+          description: 刪除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /suppliers/{id}/risk-summary:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Suppliers]
+      summary: 供應商風險摘要
+      description: 回傳 E/S/G/GP 四個獨立維度的最新風險評分。GP（地緣政治）為獨立維度。
+      responses:
+        "200":
+          description: 風險摘要
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RiskSummary'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # ══════════════════════════════
+  # M2 QUESTIONNAIRES
+  # ══════════════════════════════
+  /questionnaires/counts:
+    get:
+      tags: [Questionnaires]
+      summary: 問卷計數（KPI）
+      description: |
+        **注意語義區分**：
+        - `just_submitted_count`（管線）= 僅 `submitted` 狀態，反映待審隊列
+        - `submitted_count`（累計 KPI）= submitted + under_review + review_returned + completed + reviewed
+      responses:
+        "200":
+          description: 計數資料
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/QuestionnaireCounts'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /questionnaires:
+    get:
+      tags: [Questionnaires]
+      summary: 問卷列表
+      parameters:
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/PerPageQuery'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/QuestionnaireStatus'
+        - name: supplier_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: template_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: 問卷列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Questionnaire'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+                  message:
+                    type: string
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /questionnaires/send:
+    post:
+      tags: [Questionnaires]
+      summary: 發送問卷
+      description: 批量發送問卷給供應商，建立初始 `not_started` 狀態記錄
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionnaireSendRequest'
+      responses:
+        "201":
+          description: 發送成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          sent_count:
+                            type: integer
+                            description: 成功發送數量
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /questionnaires/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+
+    get:
+      tags: [Questionnaires]
+      summary: 問卷詳細
+      description: 包含 `is_editable` 欄位，前端應在 `false` 時全表單 disabled
+      responses:
+        "200":
+          description: 問卷詳細
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Questionnaire'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: 供應商角色存取 `under_review` 問卷
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [Questionnaires]
+      summary: 更新問卷草稿
+      description: |
+        僅允許 status 為 `not_started`、`in_progress`、`review_returned` 時操作。
+        `under_review` / `completed` / `reviewed` 時回傳 **403**。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                answers:
+                  type: object
+                  additionalProperties: true
+                  description: 題目 ID → 答案的 key-value 對
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Questionnaire'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /questionnaires/{id}/submit:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    post:
+      tags: [Questionnaires]
+      summary: 提交問卷
+      description: |
+        狀態轉換：`not_started` / `in_progress` / `review_returned` → `submitted`。
+        其他狀態回傳 400 BUSINESS_ERROR。
+      responses:
+        "200":
+          description: 提交成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Questionnaire'
+        "400":
+          $ref: '#/components/responses/BusinessError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /questionnaires/{id}/start-review:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    post:
+      tags: [Questionnaires]
+      summary: 開始審核
+      description: |
+        狀態轉換：`submitted` → `under_review`。
+        自動記錄 `review_started_at` 與 `reviewed_by_id`。
+        僅 BUYER / COMPLY 角色可操作。
+      responses:
+        "200":
+          description: 審核開始
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Questionnaire'
+        "400":
+          $ref: '#/components/responses/BusinessError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /questionnaires/{id}/complete-review:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    post:
+      tags: [Questionnaires]
+      summary: 審核通過
+      description: 狀態轉換：`under_review` → `completed`
+      responses:
+        "200":
+          description: 審核通過
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Questionnaire'
+        "400":
+          $ref: '#/components/responses/BusinessError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /questionnaires/{id}/return-review:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    post:
+      tags: [Questionnaires]
+      summary: 退回修改
+      description: |
+        狀態轉換：`under_review` → `review_returned`。
+        退回原因 `comment` 為必填，寫入 `saq_review_history`。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionnaireReturnRequest'
+      responses:
+        "200":
+          description: 退回成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Questionnaire'
+        "400":
+          $ref: '#/components/responses/BusinessError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /questionnaires/{id}/mark-reviewed:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    post:
+      tags: [Questionnaires]
+      summary: 標記已複核
+      description: 狀態轉換：`completed` → `reviewed`（特殊終態）
+      responses:
+        "200":
+          description: 複核完成
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Questionnaire'
+        "400":
+          $ref: '#/components/responses/BusinessError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # ══════════════════════════════
+  # M3 RISK
+  # ══════════════════════════════
+  /risk/matrix:
+    get:
+      tags: [Risk]
+      summary: 風險矩陣資料
+      description: |
+        回傳指定維度的 5×5 風險矩陣資料。
+        **GP（地緣政治）為獨立第四維度**，與 E/S/G 並列。
+      parameters:
+        - name: dimension
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [E, S, G, GP]
+          description: E=環境 / S=社會 / G=治理 / GP=地緣政治
+      responses:
+        "200":
+          description: 矩陣資料
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RiskMatrixResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /risk/matrix/suppliers:
+    get:
+      tags: [Risk]
+      summary: 矩陣格子供應商清單
+      description: 取得特定格子（probability × impact）內的供應商清單
+      parameters:
+        - name: dimension
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [E, S, G, GP]
+        - name: probability
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5
+        - name: impact
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/PerPageQuery'
+      responses:
+        "200":
+          description: 供應商清單
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Supplier'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+                  message:
+                    type: string
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /risk/assessments:
+    get:
+      tags: [Risk]
+      summary: 風險評估列表
+      parameters:
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/PerPageQuery'
+        - name: supplier_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: 評估列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RiskAssessment'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+                  message:
+                    type: string
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Risk]
+      summary: 建立風險評估
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [supplier_id, e_probability, e_impact, s_probability, s_impact, g_probability, g_impact, gp_probability, gp_impact]
+              properties:
+                supplier_id:
+                  type: string
+                  format: uuid
+                e_probability:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                e_impact:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                s_probability:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                s_impact:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                g_probability:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                g_impact:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                gp_probability:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                gp_impact:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+      responses:
+        "201":
+          description: 建立成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/RiskAssessment'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  # ══════════════════════════════
+  # M5 PCF
+  # ══════════════════════════════
+  /pcf/calculate:
+    post:
+      tags: [PCF]
+      summary: 觸發 PCF 批量計算
+      description: 非同步觸發 Celery 任務，立即回傳 `task_id`，可用 `/pcf/status/{task_id}` 輪詢進度
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PcfCalculateRequest'
+      responses:
+        "202":
+          description: 任務已建立
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          task_id:
+                            type: string
+                            example: "a3f8b1c2-4d5e-6789-abcd-ef0123456789"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /pcf/status/{task_id}:
+    parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [PCF]
+      summary: 查詢計算任務狀態
+      responses:
+        "200":
+          description: 任務狀態
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PcfTaskStatus'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /pcf/results/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [PCF]
+      summary: 取得 PCF 計算結果
+      responses:
+        "200":
+          description: 計算結果
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                            format: uuid
+                          supplier_id:
+                            type: string
+                            format: uuid
+                          result_co2e:
+                            type: number
+                            description: kg CO2e
+                          scope3_breakdown:
+                            type: object
+                            description: 十五類別明細
+                          calculated_at:
+                            type: string
+                            format: date-time
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # ══════════════════════════════
+  # M7 REPORTS
+  # ══════════════════════════════
+  /reports/scope3:
+    get:
+      tags: [Reports]
+      summary: Scope 3 排放彙總報告
+      description: GHG Protocol Scope 3 十五類別排放彙總（FR-8.7）
+      parameters:
+        - name: year
+          in: query
+          required: true
+          schema:
+            type: integer
+            example: 2024
+      responses:
+        "200":
+          description: Scope 3 報告
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Scope3Report'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /reports/scope3/export:
+    get:
+      tags: [Reports]
+      summary: 匯出 Scope 3 報告
+      parameters:
+        - name: year
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: format
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [xlsx, pdf]
+      responses:
+        "200":
+          description: 檔案下載
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # ══════════════════════════════
+  # M9 SETTINGS
+  # ══════════════════════════════
+  /settings/questionnaire-templates:
+    get:
+      tags: [Settings]
+      summary: 問卷範本列表（FR-9.4.x）
+      parameters:
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/PerPageQuery'
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+        - name: sasb_industry_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: 範本列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QuestionnaireTemplate'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+                  message:
+                    type: string
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Settings]
+      summary: 建立問卷範本
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, version]
+              properties:
+                name:
+                  type: string
+                sasb_industry_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                version:
+                  type: string
+                  example: "3.0.0"
+      responses:
+        "201":
+          description: 建立成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/QuestionnaireTemplate'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /settings/questionnaire-templates/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Settings]
+      summary: 問卷範本詳細
+      responses:
+        "200":
+          description: 範本詳細
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/QuestionnaireTemplate'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Settings]
+      summary: 更新問卷範本
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                sasb_industry_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                version:
+                  type: string
+                is_active:
+                  type: boolean
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/QuestionnaireTemplate'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Settings]
+      summary: 刪除問卷範本
+      responses:
+        "200":
+          description: 刪除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /settings/supplier-groups:
+    get:
+      tags: [Settings]
+      summary: 供應商分組列表（FR-9.2）
+      responses:
+        "200":
+          description: 分組列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SupplierGroup'
+                  message:
+                    type: string
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Settings]
+      summary: 建立供應商分組
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                  nullable: true
+      responses:
+        "201":
+          description: 建立成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SupplierGroup'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /settings/supplier-groups/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    put:
+      tags: [Settings]
+      summary: 更新供應商分組
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                  nullable: true
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SupplierGroup'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Settings]
+      summary: 刪除供應商分組
+      responses:
+        "200":
+          description: 刪除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /settings/sasb-industries:
+    get:
+      tags: [Settings]
+      summary: SASB 產業分類列表（FR-9.3）
+      description: 唯讀。SASB 產業分類為平台基礎資料，不支援 CRUD。
+      parameters:
+        - name: sector
+          in: query
+          description: 依 SASB Sector 篩選
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SASB 產業分類
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SasbIndustry'
+                  message:
+                    type: string
+        "401":
+          $ref: '#/components/responses/Unauthorized'

@@ -1,0 +1,4 @@
+erp_line_id,material_name,hs_code,material_code,primary_supplier_code,alternate_supplier_code,quantity,unit
+BOM-001,精梳棉 32S,52051100,RAW-COT-001,SUP-TPS-001,SUP-VGE-001,500,KG
+BOM-002,有機棉紗 40S,52051200,RAW-COT-002,SUP-TPS-001,,200,KG
+BOM-003,棉布坯布 60gsm,52081100,RAW-COT-003,SUP-VGE-001,,1000,YD

@@ -1,0 +1,4 @@
+# JWT RS256 金鑰放這裡（不入版控）
+# 產生方式：
+#   openssl genrsa -out jwt-private.pem 4096
+#   openssl rsa -in jwt-private.pem -pubout -out jwt-public.pem
