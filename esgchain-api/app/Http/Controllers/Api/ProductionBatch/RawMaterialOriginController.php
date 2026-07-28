@@ -23,6 +23,9 @@ class RawMaterialOriginController extends Controller
             'harvest_year'      => ['nullable', 'integer', 'digits:4'],
             'certification_ref' => ['nullable', 'string', 'max:200'],
             'bom_line_id'       => ['nullable', 'uuid', 'exists:product_bom_lines,id'],
+            'supplier_id'       => ['nullable', 'uuid', 'exists:suppliers,id'],
+            'transport_mode'        => ['nullable', 'in:sea,air,road,rail,multimodal,unknown'],
+            'transport_distance_km' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $origin = $batch->rawMaterialOrigins()->create($data);
@@ -43,6 +46,9 @@ class RawMaterialOriginController extends Controller
             'harvest_year'      => ['nullable', 'integer', 'digits:4'],
             'certification_ref' => ['nullable', 'string', 'max:200'],
             'bom_line_id'       => ['nullable', 'uuid', 'exists:product_bom_lines,id'],
+            'supplier_id'       => ['nullable', 'uuid', 'exists:suppliers,id'],
+            'transport_mode'        => ['nullable', 'in:sea,air,road,rail,multimodal,unknown'],
+            'transport_distance_km' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $origin->update($data);

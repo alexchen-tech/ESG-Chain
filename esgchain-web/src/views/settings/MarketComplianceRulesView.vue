@@ -20,6 +20,7 @@
           <thead>
             <tr>
               <th>文件類型</th>
+              <th>法規範疇</th>
               <th>適用層級</th>
               <th>強制要求</th>
               <th>生效日期</th>
@@ -30,7 +31,8 @@
           </thead>
           <tbody>
             <tr v-for="rule in rules" :key="rule.id" :class="{ inactive: !rule.is_active }">
-              <td class="doc-type font-mono">{{ rule.doc_type }}</td>
+              <td class="doc-type font-mono" :title="rule.doc_type">{{ regulationLabel(rule.doc_type) }}</td>
+              <td><span class="badge-scope badge-scope--material">{{ PROGRAM_LABELS[rule.program] ?? rule.program }}</span></td>
               <td>
                 <span class="badge-scope" :class="rule.scope === 'product' ? 'badge-scope--product' : 'badge-scope--material'">
                   {{ rule.scope === 'product' ? '產品層' : '物料層' }}
@@ -41,7 +43,7 @@
                   {{ rule.is_mandatory ? '強制' : '選擇性' }}
                 </span>
               </td>
-              <td class="font-mono">{{ rule.effective_from }}</td>
+              <td class="font-mono">{{ formatDate(rule.effective_from) }}</td>
               <td>
                 <span :class="rule.is_active ? 'badge-active' : 'badge-inactive'">
                   {{ rule.is_active ? '啟用' : '停用' }}
@@ -75,18 +77,34 @@
         </div>
         <form class="modal-body" @submit.prevent="submitModal">
           <div class="form-row">
-            <label>目標市場 <span class="required">*</span></label>
+            <label>地區 <span class="required">*</span></label>
             <select v-model="modal.form.market" required>
               <option value="">請選擇</option>
-              <option v-for="m in marketOptions" :key="m" :value="m">{{ m }}</option>
+              <option v-for="m in marketOptions" :key="m.value" :value="m.value">{{ m.label }}</option>
             </select>
           </div>
           <div class="form-row">
-            <label>文件類型 <span class="required">*</span></label>
-            <div class="input-hint-group">
-              <input v-model="modal.form.doc_type" type="text" placeholder="e.g. EUDR_DDS" required maxlength="50" />
-              <p class="hint">常用：EUDR_DDS、CBAM_REPORT、ORIGIN_CERT、UFLPA_DECLARATION、CMRT</p>
-            </div>
+            <label>法規 <span class="required">*</span></label>
+            <select v-model="modal.form.doc_type" required>
+              <option value="">請選擇</option>
+              <option v-for="d in regulationOptions" :key="d.value" :value="d.value">{{ d.label }}</option>
+              <option value="__custom__">其他（自訂代碼）…</option>
+            </select>
+            <input
+              v-if="modal.form.doc_type === '__custom__'"
+              v-model="customDocType"
+              type="text"
+              placeholder="自訂法規代碼，e.g. NEW_REGULATION_CODE"
+              maxlength="50"
+              style="margin-top:8px;"
+            />
+          </div>
+          <div class="form-row">
+            <label>法規範疇</label>
+            <select v-model="modal.form.program" class="form-select" style="width:100%;margin-bottom:10px;">
+              <option v-for="p in PROGRAMS" :key="p" :value="p">{{ PROGRAM_LABELS[p] }}</option>
+            </select>
+            <span style="font-size:11px;color:var(--text-secondary);">供「出口審查」篩選只跑哪個範疇的檢查項目；不確定歸類時選「一般文件」</span>
           </div>
           <div class="form-row">
             <label>適用層級</label>
@@ -134,12 +152,43 @@ import {
   marketComplianceRulesApi,
   type MarketComplianceRule,
 } from '@/api/modules/marketComplianceRules'
+import { EXPORT_MARKETS, MARKET_LABELS } from '@/constants/markets'
 
-const MARKETS = ['EU', 'US', 'NA', 'APAC', 'GB', 'JP']
+// 地區（第一階選項）：與 MarketComplianceChecker/出口市場審查實際使用的 market 值一致
+// （非 market_definitions.code，該表為管理員自訂的品牌/客戶專屬市場定義，字面值不同，
+// 例如 EU_MARKET vs 這裡的 EU，兩者是獨立的詞彙表，不可混用）
+const MARKETS = EXPORT_MARKETS.map(value => ({ value, label: MARKET_LABELS[value] }))
+
+// 對應後端 App\Models\MarketComplianceRule::PROGRAMS
+const PROGRAMS = ['dpp', 'cbam', 'eudr', 'uflpa', 'general']
+const PROGRAM_LABELS: Record<string, string> = {
+  dpp: 'DPP', cbam: 'CBAM', eudr: 'EUDR', uflpa: 'UFLPA', general: '一般文件',
+}
+
+// 法規（第二階選項）：對應 doc_type，沿用全站既有的文件類型詞彙（見
+// ProductionBatchDetailView.vue/SupplierComplianceDetailView.vue 的 DOC_TYPE_LABELS）
+const REGULATIONS = [
+  { value: 'EUDR_DDS',           label: 'EUDR DDS（禁伐林盡職調查聲明）' },
+  { value: 'UFLPA_DECLARATION',  label: 'UFLPA 聲明（防止強迫勞動法）' },
+  { value: 'CBAM_REPORT',        label: 'CBAM 報告（碳邊境調整機制）' },
+  { value: 'CMRT',               label: 'CMRT（衝突礦產報告）' },
+  { value: 'SDS',                label: 'SDS（安全資料表）' },
+  { value: 'CE_DOC',             label: 'CE 認證' },
+  { value: 'ORIGIN_CERT',        label: '原產地證明' },
+  { value: 'GRS',                label: 'GRS 認證（回收材料）' },
+  { value: 'DPP_DECLARATION',    label: 'DPP 聲明（數位產品護照）' },
+  { value: 'CPSIA_CERT',         label: 'CPSIA 認證（美國消費品安全）' },
+  { value: 'PROP65_DECLARATION', label: 'Prop 65 聲明（加州有害物質警示）' },
+  { value: 'FORMALDEHYDE_TEST',  label: '甲醛測試報告' },
+  { value: 'JP_QUALITY_LABEL',   label: '日本品質標示' },
+  { value: 'MSA_STATEMENT',      label: 'MSA 聲明（現代奴役法）' },
+  { value: 'OTHER',              label: '其他' },
+]
 
 interface ModalForm {
   market: string
   doc_type: string
+  program: string
   scope: 'material' | 'product'
   is_mandatory: boolean
   effective_from: string
@@ -155,6 +204,10 @@ export default defineComponent({
       loading: false,
       rules: [] as MarketComplianceRule[],
       marketOptions: MARKETS,
+      regulationOptions: REGULATIONS,
+      PROGRAMS,
+      PROGRAM_LABELS,
+      customDocType: '',
       modal: {
         open: false,
         id: null as string | null,
@@ -185,6 +238,7 @@ export default defineComponent({
       return {
         market: '',
         doc_type: '',
+        program: 'general',
         scope: 'material' as 'material' | 'product',
         is_mandatory: true,
         effective_from: '',
@@ -206,21 +260,25 @@ export default defineComponent({
     openCreate() {
       this.modal.id = null
       this.modal.form = this.emptyForm()
+      this.customDocType = ''
       this.modal.error = ''
       this.modal.open = true
     },
 
     openEdit(rule: MarketComplianceRule) {
+      const isKnown = REGULATIONS.some(r => r.value === rule.doc_type)
       this.modal.id = rule.id
       this.modal.form = {
         market: rule.market,
-        doc_type: rule.doc_type,
+        doc_type: isKnown ? rule.doc_type : '__custom__',
+        program: rule.program ?? 'general',
         scope: rule.scope ?? 'material',
         is_mandatory: rule.is_mandatory,
         effective_from: rule.effective_from,
         is_active: rule.is_active,
         notes: rule.notes ?? '',
       }
+      this.customDocType = isKnown ? '' : rule.doc_type
       this.modal.error = ''
       this.modal.open = true
     },
@@ -230,11 +288,16 @@ export default defineComponent({
     },
 
     async submitModal() {
+      if (this.modal.form.doc_type === '__custom__' && !this.customDocType.trim()) {
+        this.modal.error = '請輸入自訂法規代碼'
+        return
+      }
       this.modal.saving = true
       this.modal.error = ''
       try {
         const payload = {
           ...this.modal.form,
+          doc_type: this.modal.form.doc_type === '__custom__' ? this.customDocType.trim().toUpperCase() : this.modal.form.doc_type,
           notes: this.modal.form.notes || null,
         }
         if (this.modal.id) {
@@ -252,6 +315,14 @@ export default defineComponent({
       }
     },
 
+    regulationLabel(docType: string): string {
+      return REGULATIONS.find(r => r.value === docType)?.label ?? docType
+    },
+
+    formatDate(value: string): string {
+      return value ? value.slice(0, 10) : '—'
+    },
+
     async toggleActive(rule: MarketComplianceRule) {
       try {
         await marketComplianceRulesApi.update(rule.id, { is_active: !rule.is_active })
@@ -265,12 +336,12 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.badge-scope { font-size: 11px; padding: 2px 8px; border-radius: 3px; border: 1px solid var(--border); }
+.badge-scope { display: inline-block; white-space: nowrap; font-size: 11px; padding: 2px 8px; border-radius: 3px; border: 1px solid var(--border); }
 .badge-scope--product { color: var(--accent); background: #eef4f1; }
 .badge-scope--material { color: var(--text-secondary); background: var(--surface-2); }
 .market-rules-view {
   padding: 24px;
-  max-width: 960px;
+  max-width: 1180px;
 }
 
 .page-header {
@@ -345,6 +416,7 @@ export default defineComponent({
   padding: 10px 12px;
   border-bottom: 1px solid var(--border);
   color: var(--text-primary);
+  white-space: nowrap;
 }
 
 .rules-table tr:last-child td {
@@ -358,10 +430,20 @@ export default defineComponent({
 .doc-type { font-family: 'Fira Code', monospace; font-size: 12px; }
 .font-mono { font-family: 'Fira Code', monospace; font-size: 12px; }
 
-.badge-mandatory { background: #fee2e2; color: #b91c1c; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-.badge-optional  { background: var(--surface-2); color: var(--text-secondary); padding: 2px 8px; border-radius: 4px; font-size: 11px; }
-.badge-active    { background: #dcfce7; color: #15803d; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-.badge-inactive  { background: var(--surface-2); color: var(--text-secondary); padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+.badge-mandatory,
+.badge-optional,
+.badge-active,
+.badge-inactive {
+  display: inline-block;
+  white-space: nowrap;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.badge-mandatory { background: #fee2e2; color: #b91c1c; font-weight: 600; }
+.badge-optional  { background: var(--surface-2); color: var(--text-secondary); }
+.badge-active    { background: #dcfce7; color: #15803d; font-weight: 600; }
+.badge-inactive  { background: var(--surface-2); color: var(--text-secondary); }
 
 .notes-cell { color: var(--text-secondary); max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .actions-cell { white-space: nowrap; }
@@ -413,8 +495,6 @@ export default defineComponent({
 }
 .form-row textarea { resize: vertical; }
 .toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px !important; font-weight: 400 !important; color: var(--text-primary) !important; }
-.hint { font-size: 11px; color: var(--text-secondary); margin: 4px 0 0; }
-.input-hint-group { display: flex; flex-direction: column; }
 .required { color: #e53e3e; }
 .form-error { color: #e53e3e; font-size: 12px; margin-bottom: 8px; }
 

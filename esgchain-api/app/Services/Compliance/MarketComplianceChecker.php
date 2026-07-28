@@ -7,18 +7,25 @@ use App\Models\PcfSnapshot;
 use App\Models\RiskAssessment;
 use App\Models\SupplierComplianceDoc;
 use App\Models\TradeGood;
-use Illuminate\Support\Collection;
 
 class MarketComplianceChecker
 {
+    public function __construct(private readonly ProductUpstreamResolver $upstream) {}
+
     /**
      * 計算單一商品在指定市場的合規狀態。
+     *
+     * $supplierIdsOverride：批號情境下應傳入該批次「實際選定」的供應商 ID
+     * （見 ProductUpstreamResolver::batchSupplierIds()），而非籠統採用產品
+     * BOM 全部上游供應商——批號→選供應商→合規調查，需以批次實際選定的供應商
+     * 文件為準。未傳入時（如商品列表頁的一般合規檢視）退回產品層級全部上游供應商。
+     *
+     * $program：篩選只跑哪個法規範疇（見 MarketComplianceRule::PROGRAMS）的規則，
+     * 未傳入時（null）涵蓋該市場全部範疇，維持既有行為。
      */
-    public function check(TradeGood $good, string $market): array
+    public function check(TradeGood $good, string $market, ?array $supplierIdsOverride = null, ?string $program = null): array
     {
-        $good->loadMissing('tradeGoodSuppliers.materialGroup', 'tradeGoodSuppliers.supplier');
-
-        $materialDocTypes = $this->collectMaterialDocTypes($good->tradeGoodSuppliers);
+        $materialDocTypes = $this->upstream->materialGroupDocTypes($good);
 
         if ($market === 'EU' && $good->is_cbam_applicable) {
             $materialDocTypes[] = 'CBAM_REPORT';
@@ -29,6 +36,7 @@ class MarketComplianceChecker
         // product 層規則（如 DPP/CPSIA）市場內一律適用；material 層依物料群組文件需求觸發
         $rules = MarketComplianceRule::active()
             ->forMarket($market)
+            ->when($program, fn ($q) => $q->where('program', $program))
             ->where(function ($q) use ($materialDocTypes) {
                 $q->where('scope', 'product')
                   ->orWhere(fn ($q2) => $q2->where('scope', 'material')
@@ -40,9 +48,10 @@ class MarketComplianceChecker
             return $this->emptyResult($market);
         }
 
-        $supplierIds = $good->tradeGoodSuppliers->pluck('supplier_id')->filter()->unique()->values()->toArray();
+        $supplierIds = $supplierIdsOverride ?? $this->upstream->supplierIds($good);
 
         $docs = SupplierComplianceDoc::where(function ($q) use ($good, $supplierIds) {
+            // trade_good_id 路徑保留但實務上幾乎未使用，主要資料流走 supplier_id
             $q->where('trade_good_id', $good->id)
               ->orWhereIn('supplier_id', $supplierIds);
         })->whereIn('doc_type', $rules->pluck('doc_type')->toArray())
@@ -59,6 +68,7 @@ class MarketComplianceChecker
                 'is_mandatory' => $rule->is_mandatory,
                 'status'       => $status,
                 'expires_at'   => $doc?->expires_at?->toDateString(),
+                'supplier_id'   => $doc?->supplier_id,
                 'supplier_name' => $doc?->supplier?->name,
             ];
         })->values()->toArray();
@@ -77,26 +87,31 @@ class MarketComplianceChecker
 
     /**
      * 批次計算多筆商品的合規狀態，單次查詢避免 N+1，最多 100 筆。
+     *
+     * $program：篩選只跑哪個法規範疇的規則，語意同 check()，未傳入時（null）
+     * 涵蓋全部範疇，維持既有行為、向下相容。
      */
-    public function checkBatch(array $goodIds, string $market): array
+    public function checkBatch(array $goodIds, string $market, ?string $program = null): array
     {
         $goodIds = array_slice($goodIds, 0, 100);
 
-        $goods = TradeGood::with('tradeGoodSuppliers.materialGroup', 'tradeGoodSuppliers.supplier')
-            ->whereIn('id', $goodIds)
-            ->get()
-            ->keyBy('id');
+        $goods = TradeGood::whereIn('id', $goodIds)->get()->keyBy('id');
 
-        $rules = MarketComplianceRule::active()->forMarket($market)->get()->keyBy('doc_type');
+        $rules = MarketComplianceRule::active()
+            ->forMarket($market)
+            ->when($program, fn ($q) => $q->where('program', $program))
+            ->get()->keyBy('doc_type');
 
         if ($rules->isEmpty()) {
             return collect($goodIds)->mapWithKeys(fn ($id) => [$id => $this->emptyResult($market)])->toArray();
         }
 
-        $allSupplierIds = $goods->flatMap(fn ($g) => $g->tradeGoodSuppliers->pluck('supplier_id'))->filter()->unique()->values()->toArray();
+        $supplierIdsByGood = $goods->mapWithKeys(fn ($g) => [$g->id => $this->upstream->supplierIds($g)]);
+        $allSupplierIds = collect($supplierIdsByGood)->flatten()->unique()->values()->toArray();
         $allTradeGoodIds = $goodIds;
 
         $allDocs = SupplierComplianceDoc::where(function ($q) use ($allTradeGoodIds, $allSupplierIds) {
+            // trade_good_id 路徑保留但實務上幾乎未使用，主要資料流走 supplier_id
             $q->whereIn('trade_good_id', $allTradeGoodIds)
               ->orWhereIn('supplier_id', $allSupplierIds);
         })->whereIn('doc_type', $rules->keys()->toArray())
@@ -113,7 +128,7 @@ class MarketComplianceChecker
                 continue;
             }
 
-            $materialDocTypes = $this->collectMaterialDocTypes($good->tradeGoodSuppliers);
+            $materialDocTypes = $this->upstream->materialGroupDocTypes($good);
             if ($market === 'EU' && $good->is_cbam_applicable) {
                 $materialDocTypes[] = 'CBAM_REPORT';
             }
@@ -127,7 +142,7 @@ class MarketComplianceChecker
                 continue;
             }
 
-            $supplierIds = $good->tradeGoodSuppliers->pluck('supplier_id')->filter()->toArray();
+            $supplierIds = $supplierIdsByGood->get($goodId, []);
 
             $results = $applicableRules->map(function (MarketComplianceRule $rule) use ($allDocs, $goodId, $supplierIds) {
                 $docByGood     = $allDocs->get($rule->doc_type)?->get($goodId)?->first();
@@ -195,11 +210,6 @@ class MarketComplianceChecker
                 'emission_kg'  => $co2,
             ];
         })->values()->toArray();
-    }
-
-    private function collectMaterialDocTypes(Collection $tgs): array
-    {
-        return $tgs->flatMap(fn ($tg) => $tg->materialGroup?->required_doc_types ?? [])->unique()->values()->toArray();
     }
 
     /**

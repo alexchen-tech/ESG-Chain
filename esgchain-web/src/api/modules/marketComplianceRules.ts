@@ -4,6 +4,9 @@ export interface MarketComplianceRule {
   id: string
   market: string
   doc_type: string
+  // 法規範疇（見 App\Models\MarketComplianceRule::PROGRAMS），供出口審查篩選只跑哪個範疇
+  program: string
+  scope: 'material' | 'product'
   is_mandatory: boolean
   effective_from: string
   notes: string | null
@@ -15,6 +18,8 @@ export interface MarketComplianceRule {
 export interface CreateMarketComplianceRulePayload {
   market: string
   doc_type: string
+  program?: string
+  scope?: 'material' | 'product'
   is_mandatory?: boolean
   effective_from: string
   notes?: string | null
@@ -23,6 +28,8 @@ export interface CreateMarketComplianceRulePayload {
 export interface UpdateMarketComplianceRulePayload {
   market?: string
   doc_type?: string
+  program?: string
+  scope?: 'material' | 'product'
   is_mandatory?: boolean
   effective_from?: string
   notes?: string | null
