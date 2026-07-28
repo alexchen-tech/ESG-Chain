@@ -52,6 +52,7 @@ class QuestionnaireController extends Controller
 
     public function show(SAQ $questionnaire): JsonResponse
     {
+        $this->checkSupplierOwnership($questionnaire);
         $this->checkSupplierReadLock($questionnaire);
 
         return response()->json([
@@ -63,6 +64,7 @@ class QuestionnaireController extends Controller
 
     public function update(Request $request, SAQ $questionnaire): JsonResponse
     {
+        $this->checkSupplierOwnership($questionnaire);
         $this->checkSupplierWriteLock($request, $questionnaire);
 
         $validated = $request->validate([
@@ -80,6 +82,7 @@ class QuestionnaireController extends Controller
 
     public function submit(Request $request, SAQ $questionnaire): JsonResponse
     {
+        $this->checkSupplierOwnership($questionnaire);
         $this->checkSupplierWriteLock($request, $questionnaire);
         $updated = $this->service->submit($questionnaire, $request->user()->id);
 
@@ -92,6 +95,7 @@ class QuestionnaireController extends Controller
 
     public function startReview(Request $request, SAQ $questionnaire): JsonResponse
     {
+        $this->checkReviewerRole();
         $updated = $this->service->startReview($questionnaire, $request->user()->id);
 
         return response()->json([
@@ -103,6 +107,7 @@ class QuestionnaireController extends Controller
 
     public function completeReview(Request $request, SAQ $questionnaire): JsonResponse
     {
+        $this->checkReviewerRole();
         $request->validate(['comment' => ['nullable', 'string']]);
         $updated = $this->service->completeReview($questionnaire, $request->user()->id, $request->comment);
 
@@ -115,6 +120,7 @@ class QuestionnaireController extends Controller
 
     public function returnReview(Request $request, SAQ $questionnaire): JsonResponse
     {
+        $this->checkReviewerRole();
         $request->validate(['comment' => ['required', 'string', 'min:1']]);
         $updated = $this->service->returnReview($questionnaire, $request->user()->id, $request->comment);
 
@@ -127,6 +133,7 @@ class QuestionnaireController extends Controller
 
     public function markReviewed(Request $request, SAQ $questionnaire): JsonResponse
     {
+        $this->checkReviewerRole();
         $updated = $this->service->markReviewed($questionnaire, $request->user()->id);
 
         return response()->json([
@@ -134,6 +141,36 @@ class QuestionnaireController extends Controller
             'data' => $updated,
             'message' => '問卷已標記複核完成',
         ]);
+    }
+
+    // 審核動作（開始審核/通過/退回/標記複核）僅限中心廠審核角色，供應商不可對自己的問卷呼叫
+    private function checkReviewerRole(): void
+    {
+        $roles = auth()->user()?->getRoleNames()->toArray() ?? [];
+
+        if (in_array('supplier', $roles, true) || in_array('sup_esg', $roles, true)) {
+            abort(403, json_encode([
+                'success' => false,
+                'error_code' => 'FORBIDDEN',
+                'message' => '此操作僅限審核人員執行',
+            ]));
+        }
+    }
+
+    // 供應商只能存取自己 supplier_id 底下的問卷
+    private function checkSupplierOwnership(SAQ $questionnaire): void
+    {
+        $user = auth()->user();
+        $roles = $user?->getRoleNames()->toArray() ?? [];
+
+        if ((in_array('supplier', $roles, true) || in_array('sup_esg', $roles, true))
+            && $user->supplier_id !== $questionnaire->supplier_id) {
+            abort(403, json_encode([
+                'success' => false,
+                'error_code' => 'FORBIDDEN',
+                'message' => '無權限存取此資源',
+            ]));
+        }
     }
 
     private function checkSupplierWriteLock(Request $request, SAQ $questionnaire): void
@@ -161,6 +198,7 @@ class QuestionnaireController extends Controller
     // 供應商申訴（completed 後 7 天內）
     public function dispute(Request $request, SAQ $questionnaire): JsonResponse
     {
+        $this->checkSupplierOwnership($questionnaire);
         $request->validate(['reason' => ['required', 'string']]);
         $updated = $this->service->dispute($questionnaire, $request->user()->id, $request->reason);
         return response()->json(['success' => true, 'data' => $updated, 'message' => '申訴已提交']);

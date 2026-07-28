@@ -12,6 +12,13 @@ class SupplierProfileController extends Controller
 {
     public function update(Request $request, Supplier $supplier): JsonResponse
     {
+        // 供應商只能修改自己的主檔資料
+        $user = $request->user();
+        $roles = $user?->getRoleNames()->toArray() ?? [];
+        if (in_array('supplier', $roles, true) || in_array('sup_esg', $roles, true)) {
+            abort_if($user->supplier_id !== $supplier->id, 403);
+        }
+
         $validated = $request->validate([
             'sustainability_email' => ['required', 'email'],
             'address'              => ['required', 'string', 'max:500'],

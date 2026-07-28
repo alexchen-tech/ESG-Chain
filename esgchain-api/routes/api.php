@@ -34,14 +34,13 @@ use App\Http\Controllers\Api\Suppliers\SupplierContactController;
 use App\Http\Controllers\Api\Suppliers\SupplierImportController;
 use App\Http\Controllers\Api\Suppliers\SupplierProfileController;
 use App\Http\Controllers\Api\TradeGoods\TradeGoodController;
-use App\Http\Controllers\Api\ExportLink\BuyerProductExportLinkController;
 use App\Http\Controllers\Api\Compliance\MaterialGroupController;
-use App\Http\Controllers\Api\Compliance\BuyerProductController;
 use App\Http\Controllers\Api\Compliance\BuyerProductImportController;
 use App\Http\Controllers\Api\Compliance\SupplierComplianceDocController;
 use App\Http\Controllers\Api\Compliance\ComplianceDashboardController;
 use App\Http\Controllers\Api\Compliance\ProductBomLineController;
 use App\Http\Controllers\Api\Compliance\BomLineSupplierController;
+use App\Http\Controllers\Api\Compliance\MaterialItemSupplierController;
 use App\Http\Controllers\Api\Compliance\MaterialItemController;
 use App\Http\Controllers\Api\Settings\MarketDefinitionController;
 use App\Http\Controllers\Api\Portal\PortalController;
@@ -56,10 +55,6 @@ use App\Http\Controllers\Api\ProductionBatch\ProductionBatchController;
 use App\Http\Controllers\Api\ProductionBatch\RawMaterialOriginController;
 use App\Http\Controllers\Api\ProductionBatch\ProductionBatchImportController;
 use App\Http\Controllers\Api\Erp\ErpWebhookController;
-use App\Http\Controllers\Api\Shipment\ShipmentController;
-use App\Http\Controllers\Api\Shipment\ShipmentLineController;
-use App\Http\Controllers\Api\Shipment\ShipmentLineBatchController;
-use App\Http\Controllers\Api\Shipment\ShipmentDdsController;
 use App\Http\Controllers\Api\Customers\CustomerController;
 use App\Http\Controllers\Api\Customers\CustomerContactController;
 use App\Http\Controllers\Api\Compliance\MarketComplianceRuleController;
@@ -77,6 +72,8 @@ use App\Http\Controllers\Api\SupplierReplacementController;
 use App\Http\Controllers\Api\Chemical\ChemicalRegistryController;
 use App\Http\Controllers\Api\Chemical\ChemicalComplianceAlertController;
 use App\Http\Controllers\Api\SalesProducts\SalesProductController;
+use App\Http\Controllers\Api\SalesProducts\ProductPackagingController;
+use App\Http\Controllers\Api\SalesProducts\ProductBatterySpecController;
 
 /*
 |--------------------------------------------------------------------------
@@ -134,11 +131,14 @@ Route::prefix('v1')->group(function () {
     Route::post('internal/saqs/{saq}/llm-score-callback', [\App\Http\Controllers\Api\SAQ\SAQController::class, 'llmScoreCallback']);
 
     // 需要 JWT 認證的路由
-    Route::middleware('auth:api')->group(function () {
+    Route::middleware(['auth:api', 'supplier.scope'])->group(function () {
         Route::get('/auth/me', [AuthController::class, 'me']);
         Route::post('/auth/logout', [AuthController::class, 'logout']);
 
         // Supplier MDM
+        // 需排在 apiResource 之前，否則會先被 GET suppliers/{supplier} 吃掉，
+        // 誤把 network-graph 當成 supplier id 去查找
+        Route::get('suppliers/network-graph', [\App\Http\Controllers\Api\Suppliers\SupplierNetworkController::class, 'graph']);
         Route::apiResource('suppliers', SupplierController::class);
         Route::post('suppliers/{supplier}/transition', [SupplierController::class, 'transition']);
         Route::post('suppliers/{supplier}/onboarding-transition', [SupplierController::class, 'transitionOnboarding']);
@@ -294,6 +294,9 @@ Route::prefix('v1')->group(function () {
 
         // CAP 矯正行動計畫
         Route::apiResource('caps', CAPController::class);
+        Route::post('caps/{cap}/attachments', [\App\Http\Controllers\Api\CAP\CAPAttachmentController::class, 'store']);
+        Route::get('cap-attachments/{attachment}/download', [\App\Http\Controllers\Api\CAP\CAPAttachmentController::class, 'download']);
+        Route::delete('cap-attachments/{attachment}', [\App\Http\Controllers\Api\CAP\CAPAttachmentController::class, 'destroy']);
 
         // Customer MDM
         Route::apiResource('customers', CustomerController::class);
@@ -304,6 +307,7 @@ Route::prefix('v1')->group(function () {
         Route::get('trade-goods/export-risk-matrix', [ExportRiskMatrixController::class, 'index']);
         Route::post('supplier-replacement/candidates', [SupplierReplacementController::class, 'candidates']);
         Route::post('trade-goods/market-compliance-batch', [TradeGoodMarketComplianceController::class, 'batch']);
+        Route::get('trade-goods/{tradeGood}/compliance-gap', [TradeGoodMarketComplianceController::class, 'gap']);
         Route::get('trade-goods/cbam-summary', [TradeGoodController::class, 'cbamSummary']);
         Route::get('trade-goods/search', [TradeGoodController::class, 'search']);
         Route::apiResource('trade-goods', TradeGoodController::class);
@@ -318,6 +322,10 @@ Route::prefix('v1')->group(function () {
         Route::get('sales-products/search', [SalesProductController::class, 'search']);
         Route::post('sales-products/import', [BuyerProductImportController::class, 'store']);
         Route::apiResource('sales-products', SalesProductController::class);
+        Route::get('sales-products/{salesProduct}/packaging', [ProductPackagingController::class, 'show']);
+        Route::put('sales-products/{salesProduct}/packaging', [ProductPackagingController::class, 'upsert']);
+        Route::get('sales-products/{salesProduct}/battery-spec', [ProductBatterySpecController::class, 'show']);
+        Route::put('sales-products/{salesProduct}/battery-spec', [ProductBatterySpecController::class, 'upsert']);
         Route::get('sales-products/{salesProduct}/suppliers', [SalesProductController::class, 'suppliers']);
         Route::post('sales-products/{salesProduct}/suppliers', [SalesProductController::class, 'addSupplier']);
         Route::delete('sales-products/{salesProduct}/suppliers/{tradeGoodSupplier}', [SalesProductController::class, 'removeSupplier']);
@@ -334,6 +342,8 @@ Route::prefix('v1')->group(function () {
         Route::patch('sales-products/{salesProduct}/bom-lines/{bomLine}/suppliers/{bomLineSupplier}/role', [BomLineSupplierController::class, 'setRole']);
         Route::get('sales-products/{salesProductId}/pcf-latest', [PcfSnapshotController::class, 'latest']);
         Route::post('sales-products/{salesProductId}/pcf-recalc', [PcfRecalcController::class, 'recalc']);
+        Route::get('sales-products/{salesProductId}/circularity-latest', [\App\Http\Controllers\Api\Compliance\ProductCircularityController::class, 'latest']);
+        Route::post('sales-products/{salesProductId}/circularity-recalc', [\App\Http\Controllers\Api\Compliance\ProductCircularityController::class, 'recalc']);
 
         // Material Compliance
         Route::get('material-groups', [MaterialGroupController::class, 'index']);
@@ -349,6 +359,13 @@ Route::prefix('v1')->group(function () {
         Route::put('material-items/{materialItem}', [MaterialItemController::class, 'update']);
         Route::delete('material-items/{materialItem}', [MaterialItemController::class, 'destroy']);
         Route::get('material-items/{materialItem}/bom-suppliers', [MaterialItemController::class, 'bomSuppliers']);
+        Route::post('material-items/{materialItem}/bom-lines/{bomLine}/switch-primary-supplier', [MaterialItemController::class, 'switchPrimarySupplier']);
+        // 物料層級核可供應商清單（主/備），取代逐產品重複登記
+        Route::get('material-items/{materialItem}/suppliers', [MaterialItemSupplierController::class, 'index']);
+        Route::post('material-items/{materialItem}/suppliers', [MaterialItemSupplierController::class, 'store']);
+        Route::patch('material-items/{materialItem}/suppliers/{approvedSupplier}/role', [MaterialItemSupplierController::class, 'setRole']);
+        Route::delete('material-items/{materialItem}/suppliers/{approvedSupplier}', [MaterialItemSupplierController::class, 'destroy']);
+        Route::post('material-items/{materialItem}/suppliers/apply-to-bom-line', [MaterialItemSupplierController::class, 'applyToBomLine']);
 
         // Market Definitions（目標市場定義）
         Route::apiResource('market-compliance-rules', MarketComplianceRuleController::class)->only(['index', 'store', 'update', 'destroy']);
@@ -376,31 +393,6 @@ Route::prefix('v1')->group(function () {
         Route::put('market-definitions/{marketDefinition}', [MarketDefinitionController::class, 'update']);
         Route::delete('market-definitions/{marketDefinition}', [MarketDefinitionController::class, 'destroy']);
 
-        Route::get('buyer-products', [BuyerProductController::class, 'index']);
-        Route::post('buyer-products', [BuyerProductController::class, 'store']);
-        Route::put('buyer-products/{buyerProduct}', [BuyerProductController::class, 'update']);
-        Route::delete('buyer-products/{buyerProduct}', [BuyerProductController::class, 'destroy']);
-        Route::post('buyer-products/import', [BuyerProductImportController::class, 'store']);
-        Route::get('buyer-products/{buyerProduct}/compliance-status', [ComplianceDashboardController::class, 'productStatus']);
-        Route::get('buyer-products/{buyerProduct}/pcr-ratio', function (\App\Models\BuyerProduct $buyerProduct) {
-            $service = app(\App\Services\PCF\PcrCalculationService::class);
-            $result = $service->calcForProduct($buyerProduct);
-            return response()->json(['success' => true, 'data' => $result]);
-        });
-        // BOM Lines
-        Route::get('buyer-products/{buyerProduct}/bom-lines', [ProductBomLineController::class, 'index']);
-        Route::post('buyer-products/{buyerProduct}/bom-lines', [ProductBomLineController::class, 'store']);
-        Route::patch('buyer-products/{buyerProduct}/bom-lines/{bomLine}', [ProductBomLineController::class, 'update']);
-        Route::delete('buyer-products/{buyerProduct}/bom-lines/{bomLine}', [ProductBomLineController::class, 'destroy']);
-        Route::post('buyer-products/{buyerProduct}/bom-lines/import', [ProductBomLineController::class, 'import']);
-        Route::post('buyer-products/{buyerProduct}/bom-lines/{bomLine}/request-emission', [ProductBomLineController::class, 'requestEmission']);
-        Route::post('buyer-products/{buyerProduct}/bom-lines/{bomLine}/suppliers', [BomLineSupplierController::class, 'store']);
-        Route::delete('buyer-products/{buyerProduct}/bom-lines/{bomLine}/suppliers/{bomLineSupplier}', [BomLineSupplierController::class, 'destroy']);
-        Route::patch('buyer-products/{buyerProduct}/bom-lines/{bomLine}/suppliers/{bomLineSupplier}/role', [BomLineSupplierController::class, 'setRole']);
-        Route::get('buyer-products/{buyerProduct}/export-links', [BuyerProductExportLinkController::class, 'index']);
-        Route::post('buyer-products/{buyerProduct}/export-links', [BuyerProductExportLinkController::class, 'store']);
-        Route::delete('buyer-products/{buyerProduct}/export-links/{linkId}', [BuyerProductExportLinkController::class, 'destroy']);
-
         // Production Batches
         Route::get('production-batches', [ProductionBatchController::class, 'index']);
         Route::get('production-batches/{id}', [ProductionBatchController::class, 'show']);
@@ -413,19 +405,17 @@ Route::prefix('v1')->group(function () {
         Route::get('production-batches/{batchId}/export-reviews', [\App\Http\Controllers\Api\ProductionBatch\BatchExportReviewController::class, 'index']);
         Route::post('production-batches/{batchId}/export-reviews', [\App\Http\Controllers\Api\ProductionBatch\BatchExportReviewController::class, 'store']);
         Route::delete('production-batches/{batchId}/export-reviews/{reviewId}', [\App\Http\Controllers\Api\ProductionBatch\BatchExportReviewController::class, 'destroy']);
+        Route::get('production-batches/{batchId}/dds-draft', [\App\Http\Controllers\Api\ProductionBatch\BatchExportReviewController::class, 'ddsDraft']);
+        Route::get('production-batches/{batchId}/gate-check', [\App\Http\Controllers\Api\ProductionBatch\BatchExportReviewController::class, 'gateCheck']);
+        Route::get('production-batches/{batchId}/passport', [\App\Http\Controllers\Api\ProductionBatch\BatchExportReviewController::class, 'passport']);
+        // 批次×製程類型→實際供應商/廠區選定
+        Route::get('production-batches/{batchId}/process-facilities', [\App\Http\Controllers\Api\ProductionBatch\BatchProcessFacilityController::class, 'index']);
+        Route::post('production-batches/{batchId}/process-facilities', [\App\Http\Controllers\Api\ProductionBatch\BatchProcessFacilityController::class, 'store']);
+        Route::delete('production-batches/{batchId}/process-facilities/{id}', [\App\Http\Controllers\Api\ProductionBatch\BatchProcessFacilityController::class, 'destroy']);
+        Route::get('production-batches/{batchId}/process-due-diligence', [\App\Http\Controllers\Api\ProductionBatch\BatchProcessFacilityController::class, 'dueDiligence']);
+        // 跨批號出口審查清單（含「未審查」批號）
+        Route::get('export-reviews', [\App\Http\Controllers\Api\ProductionBatch\ExportReviewQueueController::class, 'index']);
         Route::post('erp/import/production-batches', [ProductionBatchImportController::class, 'store']);
-
-        // Shipments
-        Route::get('shipments', [ShipmentController::class, 'index']);
-        Route::post('shipments', [ShipmentController::class, 'store']);
-        Route::get('shipments/{id}', [ShipmentController::class, 'show']);
-        Route::put('shipments/{id}', [ShipmentController::class, 'update']);
-        Route::delete('shipments/{id}', [ShipmentController::class, 'destroy']);
-        Route::post('shipments/{id}/lines', [ShipmentLineController::class, 'store']);
-        Route::delete('shipments/{shipmentId}/lines/{lineId}', [ShipmentLineController::class, 'destroy']);
-        Route::post('shipments/{shipmentId}/lines/{lineId}/batches', [ShipmentLineBatchController::class, 'store']);
-        Route::delete('shipments/{shipmentId}/lines/{lineId}/batches/{batchId}', [ShipmentLineBatchController::class, 'destroy']);
-        Route::get('shipments/{id}/dds-draft', [ShipmentDdsController::class, 'draft']);
 
         Route::get('suppliers/{supplier}/compliance-docs', [SupplierComplianceDocController::class, 'index']);
         Route::post('suppliers/{supplier}/compliance-docs', [SupplierComplianceDocController::class, 'store']);
@@ -478,6 +468,19 @@ Route::prefix('v1')->group(function () {
         Route::get('portal/facilities', [PortalFacilityController::class, 'index']);
         Route::post('portal/facilities/{facility}/activity-reports', [PortalFacilityController::class, 'storeReport']);
         Route::post('portal/facilities/{facility}/activity-reports/{report}/submit', [PortalFacilityController::class, 'submitReport']);
+
+        // 永續 KPI 填報 - Portal
+        Route::get('portal/disclosures', [\App\Http\Controllers\Api\Portal\PortalDisclosureController::class, 'index']);
+        Route::post('portal/disclosures', [\App\Http\Controllers\Api\Portal\PortalDisclosureController::class, 'store']);
+
+        // 矯正行動（CAP）- Portal
+        Route::get('portal/caps', [\App\Http\Controllers\Api\Portal\PortalCapController::class, 'index']);
+        Route::get('portal/caps/{cap}', [\App\Http\Controllers\Api\Portal\PortalCapController::class, 'show']);
+        Route::post('portal/caps/{cap}/update', [\App\Http\Controllers\Api\Portal\PortalCapController::class, 'addUpdate']);
+
+        // 站內通知 - Portal
+        Route::get('portal/notifications/unread-count', [\App\Http\Controllers\Api\Portal\PortalNotificationController::class, 'unreadCount']);
+        Route::post('portal/notifications/mark-read', [\App\Http\Controllers\Api\Portal\PortalNotificationController::class, 'markRead']);
 
 
         // 活動資料層 - 買方端

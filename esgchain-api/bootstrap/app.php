@@ -17,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'erp.hmac'      => \App\Http\Middleware\VerifyErpHmacSignature::class,
             'export.apikey' => \App\Http\Middleware\VerifyExportApiKey::class,
+            'supplier.scope' => \App\Http\Middleware\EnsureSupplierPortalScope::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

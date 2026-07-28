@@ -30,6 +30,14 @@ class QuestionnaireService
 
     public function list(array $filters = []): LengthAwarePaginator
     {
+        // 供應商角色一律強制以自己的 supplier_id 過濾，不管請求是否帶入 supplier_id，
+        // 避免不帶該參數即可繞過而看到全站問卷（IDOR 修復）
+        $user = auth()->user();
+        $roles = $user?->getRoleNames()->toArray() ?? [];
+        if (in_array('supplier', $roles, true) || in_array('sup_esg', $roles, true)) {
+            $filters['supplier_id'] = $user->supplier_id;
+        }
+
         return SAQ::with(['supplier', 'template', 'project'])
             ->when($filters['status'] ?? null, fn($q, $v) => $q->where('status', $v))
             ->when($filters['supplier_id'] ?? null, fn($q, $v) => $q->where('supplier_id', $v))

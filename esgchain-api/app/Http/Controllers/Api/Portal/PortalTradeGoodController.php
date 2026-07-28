@@ -13,16 +13,16 @@ class PortalTradeGoodController extends Controller
 {
     public function index(): JsonResponse
     {
-        $supplier = Auth::user()->supplier;
-        abort_if(!$supplier, 403);
+        $supplierId = Auth::user()->supplier_id;
+        abort_if(!$supplierId, 403);
 
         $tradeGoods = TradeGood::whereHas('tradeGoodSuppliers', fn($q) =>
-            $q->where('supplier_id', $supplier->id)
+            $q->where('supplier_id', $supplierId)
         )->with(['emissionReports' => fn($q) =>
-            $q->where('supplier_id', $supplier->id)->orderByDesc('reported_at')->limit(1)
+            $q->where('supplier_id', $supplierId)->orderByDesc('reported_at')->limit(1)
         ])->get();
 
-        $data = $tradeGoods->map(function ($tg) use ($supplier) {
+        $data = $tradeGoods->map(function ($tg) {
             $latest = $tg->emissionReports->first();
             return [
                 'id'               => $tg->id,
@@ -43,12 +43,12 @@ class PortalTradeGoodController extends Controller
 
     public function reportEmission(Request $request, TradeGood $tradeGood): JsonResponse
     {
-        $supplier = Auth::user()->supplier;
-        abort_if(!$supplier, 403);
+        $supplierId = Auth::user()->supplier_id;
+        abort_if(!$supplierId, 403);
 
         // 確認此供應商確實被關聯到此 TradeGood
         abort_unless(
-            $tradeGood->tradeGoodSuppliers()->where('supplier_id', $supplier->id)->exists(),
+            $tradeGood->tradeGoodSuppliers()->where('supplier_id', $supplierId)->exists(),
             403,
             '您未被關聯至此貿易商品'
         );
@@ -60,7 +60,7 @@ class PortalTradeGoodController extends Controller
 
         $emission = TradeGoodSupplierEmission::create([
             'trade_good_id'    => $tradeGood->id,
-            'supplier_id'      => $supplier->id,
+            'supplier_id'      => $supplierId,
             'emissions_value'  => $validated['emissions_value'],
             'calculation_note' => $validated['calculation_note'] ?? null,
             'reported_at'      => now(),

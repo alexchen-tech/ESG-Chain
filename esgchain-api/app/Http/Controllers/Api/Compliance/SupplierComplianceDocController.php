@@ -18,6 +18,12 @@ class SupplierComplianceDocController extends Controller
 
     public function index(Request $request, Supplier $supplier): JsonResponse
     {
+        // 供應商只能查詢自己的合規文件清單
+        $user = $request->user();
+        if (in_array('supplier', $user->getRoleNames()->toArray()) || in_array('sup_esg', $user->getRoleNames()->toArray())) {
+            abort_if($user->supplier_id !== $supplier->id, 403);
+        }
+
         $query = $supplier->complianceDocs()->with('tradeGood');
 
         // status 篩選需在記憶體中過濾（動態計算）
@@ -41,7 +47,7 @@ class SupplierComplianceDocController extends Controller
         $validated = $request->validate([
             'doc_type'      => ['required', 'string', 'in:' . implode(',', self::VALID_DOC_TYPES)],
             'file'          => ['required', 'file', 'max:10240'],
-            'trade_good_id' => ['nullable', 'uuid', 'exists:trade_goods,id'],
+            'trade_good_id' => ['nullable', 'uuid', 'exists:sales_products,id'],
             'issued_at'     => ['nullable', 'date'],
             'expires_at'    => ['nullable', 'date'],
             'notes'         => ['nullable', 'string'],
