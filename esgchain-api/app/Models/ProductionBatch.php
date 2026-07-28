@@ -15,7 +15,6 @@ class ProductionBatch extends Model
     protected $fillable = [
         'erp_batch_no',
         'erp_order_no',
-        'buyer_product_trade_good_id',
         'supplier_id',
         'sales_product_id',
         'production_date',
@@ -44,18 +43,18 @@ class ProductionBatch extends Model
         return $this->belongsTo(SalesProduct::class);
     }
 
-    public function exportLink(): BelongsTo
-    {
-        return $this->belongsTo(BuyerProductTradeGood::class, 'buyer_product_trade_good_id');
-    }
-
     public function rawMaterialOrigins(): HasMany
     {
         return $this->hasMany(RawMaterialOrigin::class);
     }
 
-    public function shipmentLineBatches(): HasMany
+    public function exportReviews(): HasMany
     {
-        return $this->hasMany(ShipmentLineBatch::class);
+        return $this->hasMany(BatchExportReview::class);
+    }
+
+    public function processFacilities(): HasMany
+    {
+        return $this->hasMany(BatchProcessFacility::class);
     }
 }
