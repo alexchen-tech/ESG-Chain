@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\CAP;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\DB;
+use App\Jobs\NotifyCapAssignedJob;
 use App\Models\CAP;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,6 +14,7 @@ class CAPController extends Controller
     public function index(Request $request): JsonResponse
     {
         $paginated = CAP::with(['supplier', 'findings', 'complianceDoc'])
+            ->withCount('attachments')
             ->when($request->supplier_id, fn($q, $v) => $q->where('supplier_id', $v))
             ->when($request->status, fn($q, $v) => $q->where('status', $v))
             ->orderBy('due_date')
@@ -80,6 +82,8 @@ class CAPController extends Controller
             }
         }
 
+        NotifyCapAssignedJob::dispatch($cap->id);
+
         return response()->json([
             'success' => true,
             'data' => $cap->load('findings'),
@@ -89,7 +93,7 @@ class CAPController extends Controller
 
     public function show(CAP $cap): JsonResponse
     {
-        $cap->load(['supplier', 'saq', 'findings', 'complianceDoc']);
+        $cap->load(['supplier', 'saq', 'findings', 'complianceDoc', 'updates.changedBy', 'updates.attachments', 'attachments.uploadedBy']);
 
         // 為 ISO finding 附加 topic_label_zh
         $slugs = $cap->findings->pluck('topic_slug')->filter()->unique()->values()->all();
@@ -124,13 +128,26 @@ class CAPController extends Controller
             'priority' => ['sometimes', 'in:low,medium,high,critical'],
             'due_date' => ['sometimes', 'nullable', 'date'],
             'assigned_to' => ['sometimes', 'nullable', 'uuid'],
+            'notes' => ['sometimes', 'nullable', 'string', 'max:2000'],
         ]);
+
+        $notes = $validated['notes'] ?? null;
+        unset($validated['notes']);
 
         $cap->update($validated);
 
+        // 狀態變更或填了備註時，落地成一筆歷程紀錄（稽核軌跡），而非直接丟棄
+        if (array_key_exists('status', $validated) || $notes) {
+            $cap->updates()->create([
+                'status'     => $validated['status'] ?? $cap->status,
+                'notes'      => $notes,
+                'changed_by' => $request->user()->id,
+            ]);
+        }
+
         return response()->json([
             'success' => true,
-            'data' => $cap->fresh(['findings']),
+            'data' => $cap->fresh(['findings', 'updates.changedBy', 'updates.attachments']),
             'message' => 'CAP 已更新',
         ]);
     }

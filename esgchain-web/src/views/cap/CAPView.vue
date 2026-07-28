@@ -55,13 +55,14 @@
         <tbody>
           <template v-for="(cap, i) in visibleCaps" :key="cap.id">
           <tr
+            :id="`cap-row-${cap.id}`"
             class="data-row"
-            :class="{ 'row-overdue': cap.status === 'overdue', 'row-done': cap.status === 'completed' || cap.status === 'closed' }"
+            :class="{ 'row-overdue': cap.status === 'overdue', 'row-done': cap.status === 'completed' || cap.status === 'closed', 'row-highlight': cap.id === highlightId }"
           >
             <td class="col-num font-mono">{{ (pagination.current_page - 1) * pagination.per_page + i + 1 }}</td>
             <td>
               <div class="title-line">
-                <span class="doc-type-chip" :class="docTypeChipClass(parsedTitle(cap.title).docType)">
+                <span v-if="parsedTitle(cap.title).docType" class="doc-type-chip" :class="docTypeChipClass(parsedTitle(cap.title).docType)">
                   {{ parsedTitle(cap.title).docType }}
                 </span>
                 <span v-if="cap.auto_generated" class="auto-badge">自動生成</span>
@@ -70,6 +71,7 @@
                 </span>
               </div>
               <div class="cap-desc">{{ parsedTitle(cap.title).description }}</div>
+              <div v-if="cap.description" class="cap-desc" style="color:var(--text-secondary);font-size:12px;margin-top:2px;">{{ cap.description }}</div>
             </td>
             <td class="supplier-cell">{{ supplierName(cap) }}</td>
             <td style="text-align:center;">
@@ -87,9 +89,14 @@
               </span>
             </td>
             <td style="text-align:center;">
-              <button class="btn-update" @click="openUpdateModal(cap)" :disabled="cap.status === 'completed' || cap.status === 'closed'">
-                更新狀態
-              </button>
+              <div style="display:flex;gap:6px;justify-content:center;align-items:center;">
+                <button class="btn-update" @click="openUpdateModal(cap)" :disabled="cap.status === 'completed' || cap.status === 'closed'">
+                  更新狀態
+                </button>
+                <button class="btn-history" @click="toggleHistory(cap)" :title="'歷程與佐證文件'">
+                  📎<span v-if="cap.attachments_count">{{ cap.attachments_count }}</span>
+                </button>
+              </div>
             </td>
           </tr>
           <!-- findings 展開列 -->
@@ -108,6 +115,32 @@
                     </span>
                   </div>
                   <div class="finding-text">{{ f.finding }}</div>
+                </div>
+              </div>
+            </td>
+          </tr>
+          <!-- 歷程與佐證文件展開列 -->
+          <tr v-if="expandedHistoryId === cap.id" class="history-row">
+            <td colspan="8">
+              <div v-if="historyLoading" class="text-muted" style="font-size:12px;padding:8px 0;">載入中…</div>
+              <div v-else-if="!cap.updates || cap.updates.length === 0" class="text-muted" style="font-size:12px;padding:8px 0;">
+                尚無歷程紀錄
+              </div>
+              <div v-else class="history-list">
+                <div v-for="u in cap.updates" :key="u.id" class="history-item">
+                  <div class="history-item-head">
+                    <span class="badge" :class="statusBadgeClass(u.status)">{{ statusLabel(u.status) }}</span>
+                    <span class="history-meta">{{ u.changed_by?.name ?? '—' }} · {{ formatDateTime(u.created_at) }}</span>
+                  </div>
+                  <div v-if="u.notes" class="history-notes">{{ u.notes }}</div>
+                  <div v-if="u.attachments && u.attachments.length" class="history-attachments">
+                    <button
+                      v-for="att in u.attachments"
+                      :key="att.id"
+                      class="attachment-chip"
+                      @click="downloadAttachment(att)"
+                    >📄 {{ att.file_name }}</button>
+                  </div>
                 </div>
               </div>
             </td>
@@ -175,13 +208,12 @@
           <button class="modal-close" @click="showUpdateModal = false">×</button>
         </div>
         <div class="cap-summary">
-          <div class="cap-summary-title">
-            <span class="doc-type-chip" :class="docTypeChipClass(parsedTitle(selectedCAP?.title ?? '').docType)">
-              {{ parsedTitle(selectedCAP?.title ?? '').docType }}
-            </span>
-            {{ parsedTitle(selectedCAP?.title ?? '').description }}
-          </div>
-          <div class="cap-summary-supplier">{{ selectedCAP ? supplierName(selectedCAP) : '' }}</div>
+          <span v-if="parsedTitle(selectedCAP?.title ?? '').docType" class="doc-type-chip" :class="docTypeChipClass(parsedTitle(selectedCAP?.title ?? '').docType)">
+            {{ parsedTitle(selectedCAP?.title ?? '').docType }}
+          </span>
+          <div class="cap-summary-title">{{ parsedTitle(selectedCAP?.title ?? '').description }}</div>
+          <div class="cap-summary-supplier">🏭 {{ selectedCAP ? supplierName(selectedCAP) : '' }}</div>
+          <div v-if="selectedCAP?.description" class="cap-summary-desc">{{ selectedCAP.description }}</div>
         </div>
         <div class="form-group">
           <label class="form-label">更新為</label>
@@ -202,6 +234,16 @@
           <label class="form-label">備註（選填）</label>
           <textarea v-model="updateForm.notes" class="form-input" rows="2" style="resize:vertical;" placeholder="說明本次更新的原因或進度…"></textarea>
         </div>
+        <div class="form-group">
+          <label class="form-label">佐證文件（選填，可多選）</label>
+          <input ref="fileInput" type="file" multiple class="form-input" @change="onPickFiles" />
+          <div v-if="updateForm.files.length" class="picked-files">
+            <span v-for="(f, idx) in updateForm.files" :key="idx" class="picked-file-chip">
+              {{ f.name }}
+              <button type="button" class="picked-file-remove" @click="updateForm.files.splice(idx, 1)">×</button>
+            </span>
+          </div>
+        </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" @click="showUpdateModal = false">取消</button>
           <button class="btn btn-primary" :disabled="isSubmitting" @click="doUpdate">
@@ -215,7 +257,7 @@
 
 <script lang="ts">
 import { defineComponent } from 'vue'
-import { capApi, type CAP } from '@/api/modules/cap'
+import { capApi, type CAP, type CAPAttachment } from '@/api/modules/cap'
 
 const STATUS_FILTERS = [
   { value: '', label: '全部', cls: '' },
@@ -260,7 +302,10 @@ export default defineComponent({
       showUpdateModal: false,
       selectedCAP: null as CAP | null,
       form: { title: '', supplier_id: '', priority: 'medium', due_date: '', description: '' },
-      updateForm: { status: '', notes: '' },
+      updateForm: { status: '', notes: '', files: [] as File[] },
+      highlightId: '',
+      expandedHistoryId: '' as string,
+      historyLoading: false,
     }
   },
 
@@ -275,7 +320,19 @@ export default defineComponent({
     },
   },
 
-  mounted() { this.loadData() },
+  async mounted() {
+    await this.loadData()
+    const highlight = this.$route.query.highlight
+    if (highlight && typeof highlight === 'string') {
+      this.highlightId = highlight
+      await this.$nextTick()
+      const el = document.getElementById(`cap-row-${highlight}`)
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      // 移除 query 避免重新整理時重複觸發，並在動畫結束後淡出高亮
+      this.$router.replace({ query: {} })
+      setTimeout(() => { this.highlightId = '' }, 2600)
+    }
+  },
 
   methods: {
     async loadData() {
@@ -313,14 +370,55 @@ export default defineComponent({
 
     openUpdateModal(cap: CAP) {
       this.selectedCAP = cap
-      this.updateForm = { status: cap.status, notes: '' }
+      this.updateForm = { status: cap.status, notes: '', files: [] }
       this.showUpdateModal = true
+    },
+
+    onPickFiles(e: Event) {
+      const input = e.target as HTMLInputElement
+      if (input.files) this.updateForm.files.push(...Array.from(input.files))
+      input.value = ''
+    },
+
+    async toggleHistory(cap: CAP) {
+      if (this.expandedHistoryId === cap.id) {
+        this.expandedHistoryId = ''
+        return
+      }
+      this.expandedHistoryId = cap.id
+      if (!cap.updates) {
+        this.historyLoading = true
+        try {
+          const { data } = await capApi.get(cap.id)
+          cap.updates = data.data.updates
+        } finally { this.historyLoading = false }
+      }
+    },
+
+    formatDateTime(val: string | null | undefined): string {
+      if (!val) return '—'
+      return val.slice(0, 16).replace('T', ' ')
+    },
+
+    async downloadAttachment(att: CAPAttachment) {
+      try {
+        const res = await capApi.downloadAttachment(att.id)
+        const url = URL.createObjectURL(new Blob([res.data as any]))
+        const a = document.createElement('a')
+        a.href = url
+        a.download = att.file_name || 'file'
+        a.click()
+        URL.revokeObjectURL(url)
+      } catch {
+        alert('下載失敗')
+      }
     },
 
     parsedTitle(title: string): { docType: string; description: string } {
       const m = title.match(/^(\[[^\]]+\])\s*(.+?)(?:\s*—\s*.+)?$/)
       if (m) return { docType: m[1].replace(/[\[\]]/g, ''), description: m[2] }
-      return { docType: title, description: '' }
+      // 沒有 [docType] 前綴的標題（如義務缺口面板建立的「補件：xxx」）：整段當標題本文，不塞進小 chip
+      return { docType: '', description: title }
     },
 
     supplierName(cap: any): string {
@@ -368,11 +466,30 @@ export default defineComponent({
       if (!this.selectedCAP) return
       this.isSubmitting = true
       try {
+        const capId = this.selectedCAP.id
         const payload: any = { status: this.updateForm.status }
         if (this.updateForm.notes.trim()) payload.notes = this.updateForm.notes.trim()
-        await capApi.update(this.selectedCAP.id, payload)
+        const { data } = await capApi.update(capId, payload)
+
+        // 有選檔案的話，掛在這次剛建立的歷程紀錄底下
+        if (this.updateForm.files.length) {
+          const updateId = data.data.updates?.[0]?.id
+          for (const file of this.updateForm.files) {
+            await capApi.uploadAttachment(capId, file, updateId)
+          }
+        }
+
+        // 已展開歷程的話一併刷新，避免顯示過期資料
+        if (this.expandedHistoryId === capId) {
+          const fresh = await capApi.get(capId)
+          const idx = this.caps.findIndex(c => c.id === capId)
+          if (idx !== -1) this.caps[idx].updates = fresh.data.data.updates
+        }
+
         this.showUpdateModal = false
         this.loadData()
+      } catch (e: any) {
+        alert(e?.response?.data?.message ?? '更新失敗')
       } finally { this.isSubmitting = false }
     },
   },
@@ -493,6 +610,12 @@ export default defineComponent({
 .data-row.row-overdue { background: #fff8f8; }
 .data-row.row-overdue:hover { background: #fef2f2; }
 .data-row.row-done { opacity: 0.65; }
+.data-row.row-highlight { animation: cap-row-flash 2.6s ease-out; }
+@keyframes cap-row-flash {
+  0%   { background: #dcf1dc; }
+  70%  { background: #dcf1dc; }
+  100% { background: transparent; }
+}
 
 /* ── Doc type chip ── */
 .doc-type-chip {
@@ -514,7 +637,7 @@ export default defineComponent({
 .chip-default { background: var(--surface-2); color: var(--text-secondary); border: 1px solid var(--border); }
 
 .title-line { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
-.cap-desc { font-size: 12px; color: var(--text-secondary); padding-left: 2px; }
+.cap-desc { font-size: 13px; font-weight: 500; color: var(--text-primary); padding-left: 2px; }
 .supplier-cell { font-size: 13px; color: var(--text-primary); font-weight: 500; }
 
 /* ── Due date ── */
@@ -584,6 +707,44 @@ export default defineComponent({
 }
 .btn-update:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .btn-update:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-history {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 5px 8px; border-radius: 6px; font-size: 12px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-secondary); cursor: pointer; transition: all 0.12s;
+}
+.btn-history:hover { border-color: var(--accent); color: var(--accent); }
+.text-muted { color: var(--text-secondary); }
+
+/* ── 歷程展開列 ── */
+.history-row td { padding: 12px 20px; background: var(--surface-2); }
+.history-list { display: flex; flex-direction: column; gap: 10px; }
+.history-item { border-left: 2px solid var(--border); padding-left: 12px; }
+.history-item-head { display: flex; align-items: center; gap: 8px; }
+.history-meta { font-size: 11px; color: var(--text-secondary); }
+.history-notes { font-size: 12px; color: var(--text-primary); margin-top: 4px; }
+.history-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.attachment-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; padding: 3px 9px; border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text-primary); cursor: pointer;
+}
+.attachment-chip:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── 更新 Modal 檔案選取 ── */
+.picked-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.picked-file-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; padding: 3px 8px 3px 10px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.picked-file-remove {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-secondary); font-size: 14px; line-height: 1; padding: 0;
+}
+.picked-file-remove:hover { color: #dc2626; }
 
 /* ── Pagination ── */
 .pagination-bar {
@@ -665,19 +826,19 @@ export default defineComponent({
 .cap-summary {
   background: var(--surface-2);
   border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
   border-radius: 8px;
-  padding: 12px 14px;
+  padding: 14px 16px;
 }
 .cap-summary-title {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 17px;
+  font-weight: 700;
   color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
+  line-height: 1.4;
+  margin-top: 6px;
 }
-.cap-summary-supplier { font-size: 12px; color: var(--text-secondary); }
+.cap-summary-supplier { font-size: 13px; color: var(--text-secondary); margin-top: 6px; }
+.cap-summary-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin-top: 8px; white-space: pre-wrap; }
 
 /* ── Status option grid ── */
 .status-option-grid {

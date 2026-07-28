@@ -16,6 +16,26 @@ export interface CAPFinding {
   target_date: string | null
 }
 
+export interface CAPAttachment {
+  id: string
+  cap_id: string
+  cap_update_id: string | null
+  file_path: string
+  file_name: string
+  uploaded_by: { id: string; name: string } | null
+  created_at: string
+}
+
+export interface CAPUpdateEntry {
+  id: string
+  cap_id: string
+  status: string
+  notes: string | null
+  changed_by: { id: string; name: string } | null
+  created_at: string
+  attachments?: CAPAttachment[]
+}
+
 export interface CAP {
   id: string
   supplier_id: string
@@ -32,6 +52,9 @@ export interface CAP {
   assigned_to: string | null
   supplier?: any
   findings?: CAPFinding[]
+  updates?: CAPUpdateEntry[]
+  attachments?: CAPAttachment[]
+  attachments_count?: number
 }
 
 export const capApi = {
@@ -44,9 +67,24 @@ export const capApi = {
   create: (data: Partial<CAP> & { findings?: any[] }) =>
     http.post<{ success: boolean; data: CAP }>('/api/v1/caps', data),
 
-  update: (id: string, data: Partial<CAP>) =>
+  update: (id: string, data: Partial<CAP> & { notes?: string }) =>
     http.put<{ success: boolean; data: CAP }>(`/api/v1/caps/${id}`, data),
 
   delete: (id: string) =>
     http.delete(`/api/v1/caps/${id}`),
+
+  uploadAttachment: (capId: string, file: File, capUpdateId?: string) => {
+    const form = new FormData()
+    form.append('file', file)
+    if (capUpdateId) form.append('cap_update_id', capUpdateId)
+    return http.post<{ success: boolean; data: CAPAttachment }>(`/api/v1/caps/${capId}/attachments`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  deleteAttachment: (attachmentId: string) =>
+    http.delete(`/api/v1/cap-attachments/${attachmentId}`),
+
+  downloadAttachment: (attachmentId: string) =>
+    http.get(`/api/v1/cap-attachments/${attachmentId}/download`, { responseType: 'blob' }),
 }

@@ -57,4 +57,14 @@ class CAP extends Model
     {
         return $this->belongsTo(SupplierComplianceDoc::class, 'source_id');
     }
+
+    public function updates(): HasMany
+    {
+        return $this->hasMany(CAPUpdate::class, 'cap_id')->latest();
+    }
+
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(CAPAttachment::class, 'cap_id')->latest();
+    }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Services\CAP;
 
+use App\Jobs\NotifyCapAssignedJob;
 use App\Models\CAP;
 use App\Models\RiskAssessment;
 use App\Models\SAQ;
@@ -95,6 +96,7 @@ class CapAutoGenerationService
             'triggered_by_axis' => $dimField,
             'auto_generated'    => true,
             'title'             => sprintf('[%s] %s 合規分嚴重不足（%s / 100，閾值 %s）', strtoupper($dimField), $label, round($score, 1), $threshold),
+            'description'       => $template['suggested_actions'],
             'priority'          => 'critical',
             'status'            => 'open',
             'due_date'          => now()->addDays(30)->toDateString(),
@@ -110,10 +112,7 @@ class CapAutoGenerationService
             'status'       => 'open',
         ]);
 
-        // 在 CAP description / suggested_actions 欄位寫入模板文字（若有欄位）
-        if ($cap->getConnection()->getSchemaBuilder()->hasColumn('cap_actions', 'suggested_actions')) {
-            $cap->update(['suggested_actions' => $template['suggested_actions']]);
-        }
+        NotifyCapAssignedJob::dispatch($cap->id);
     }
 
     /**
