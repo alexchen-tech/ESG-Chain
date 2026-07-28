@@ -36,11 +36,6 @@ class Customer extends Model
         return $this->hasMany(TradeGood::class);
     }
 
-    public function shipments(): HasMany
-    {
-        return $this->hasMany(Shipment::class);
-    }
-
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');

@@ -34,6 +34,9 @@ class SAQQuestionController extends Controller
             'tag_ids'          => ['nullable', 'array'],
             'tag_ids.*'        => ['uuid', 'exists:question_tags,id'],
             'compliance_domains' => ['nullable', 'array'],
+            'scoring_direction'  => ['nullable', 'in:positive,negative'],
+            'scoring_type'       => ['nullable', 'in:ordered_asc,ordered_desc,custom,evidence_only,llm'],
+            'option_scores'      => ['nullable', 'array'],
         ]);
 
         $tagIds = $validated['tag_ids'] ?? [];
@@ -71,6 +74,9 @@ class SAQQuestionController extends Controller
             'tag_ids'            => ['sometimes', 'nullable', 'array'],
             'tag_ids.*'          => ['uuid', 'exists:question_tags,id'],
             'compliance_domains' => ['sometimes', 'nullable', 'array'],
+            'scoring_direction'  => ['sometimes', 'nullable', 'in:positive,negative'],
+            'scoring_type'       => ['sometimes', 'nullable', 'in:ordered_asc,ordered_desc,custom,evidence_only,llm'],
+            'option_scores'      => ['sometimes', 'nullable', 'array'],
         ]);
 
         $tagIds = $validated['tag_ids'] ?? null;

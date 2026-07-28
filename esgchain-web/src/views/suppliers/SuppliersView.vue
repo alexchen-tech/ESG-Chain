@@ -361,9 +361,7 @@ export default defineComponent({
     statusLabel(status: string) { return STATUS_LABELS[status] ?? status },
     statusBadgeClass(status: string) {
       const map: Record<string, string> = {
-        active: 'badge-green', certified: 'badge-green',
-        reviewing: 'badge-blue', invited: 'badge-purple',
-        suspended: 'badge-yellow', terminated: 'badge-red', potential: 'badge-gray',
+        active: 'badge-green', suspended: 'badge-yellow', terminated: 'badge-red',
       }
       return map[status] ?? 'badge-gray'
     },

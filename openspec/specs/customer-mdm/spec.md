@@ -41,11 +41,4 @@ EU 成員國客戶的 EORI Number 須通過格式與一致性驗證。
 - **WHEN** 刪除 is_primary=true 的聯絡人
 - **THEN** 允許刪除，不自動指派新主要聯絡人
 
----
-
-### Requirement: agent 類型警告
-代理商類型客戶在出貨情境下須提示 CBAM 責任確認。
-
-#### Scenario: Shipment 綁定 agent 客戶
-- **WHEN** 建立 Shipment 時選擇 customer_type='agent' 的客戶
-- **THEN** API response 加入 warnings: ["代理商可能非實際 CBAM 進口商，請確認實際進口商身份"]
+> **已移除**：原「agent 類型警告」需求（Shipment 綁定 agent 客戶時提示 CBAM 責任確認）隨出口申報（Shipment）模組一併移除。系統邊界止於出口前合規檢查，出口交易執行（含客戶綁定）屬 ERP 範疇。

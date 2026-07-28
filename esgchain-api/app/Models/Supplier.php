@@ -14,8 +14,8 @@ class Supplier extends Model
 {
     use HasUuids, HasFactory, SoftDeletes;
 
-    // spec v2.1.0: status = active | inactive | suspended（ERP 擁有，不可手動修改）
-    const STATUSES = ['active', 'inactive', 'suspended'];
+    // status = active | inactive（ERP 擁有，依匯入資料決定，不可手動修改；active 為匯入時預設值）
+    const STATUSES = ['active', 'inactive'];
     // ESG-Chain 擁有：供應商合作狀態（與 ERP status 語意一致）
     const ONBOARDING_STAGES = ['active', 'suspended', 'terminated'];
 
@@ -77,6 +77,11 @@ class Supplier extends Model
         return $this->hasMany(BomLineSupplier::class);
     }
 
+    public function materialItemSuppliers(): HasMany
+    {
+        return $this->hasMany(MaterialItemSupplier::class);
+    }
+
     public function productionBatches(): HasMany
     {
         return $this->hasMany(ProductionBatch::class);
@@ -87,11 +92,17 @@ class Supplier extends Model
         return $this->hasOne(RiskAssessment::class)->latestOfMany('assessed_at');
     }
 
-    public function transitionStatus(string $newStatus, ?string $reason, string $changedBy): void
+    public function riskAssessments(): HasMany
+    {
+        return $this->hasMany(RiskAssessment::class);
+    }
+
+    public function transitionStatus(string $newStatus, ?string $reason, ?string $changedBy): void
     {
         $oldStatus = $this->status;
         $this->update(['status' => $newStatus]);
         $this->statusHistories()->create([
+            'type' => 'erp_status',
             'from_status' => $oldStatus,
             'to_status' => $newStatus,
             'reason' => $reason,
@@ -108,6 +119,7 @@ class Supplier extends Model
         $oldStage = $this->onboarding_stage;
         $this->update(['onboarding_stage' => $newStage]);
         $this->statusHistories()->create([
+            'type'        => 'onboarding',
             'from_status' => $oldStage,
             'to_status'   => $newStage,
             'reason'      => $reason,
@@ -123,5 +135,16 @@ class Supplier extends Model
     public function facilities(): HasMany
     {
         return $this->hasMany(SupplierFacility::class);
+    }
+
+    /**
+     * 供應商僅有單一廠區時，該廠區即視為預設廠區（不需使用者手動指定）；
+     * 有多個廠區時無法判斷該用哪一個，回傳 null 交由使用者自行選擇。
+     */
+    public function defaultFacility(): ?SupplierFacility
+    {
+        $facilities = $this->relationLoaded('facilities') ? $this->facilities : $this->facilities()->get();
+
+        return $facilities->count() === 1 ? $facilities->first() : null;
     }
 }

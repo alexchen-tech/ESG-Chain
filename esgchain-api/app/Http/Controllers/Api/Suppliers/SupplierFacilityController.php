@@ -26,7 +26,7 @@ class SupplierFacilityController extends Controller
             'name'          => ['required', 'string', 'max:255'],
             'country'       => ['nullable', 'string', 'size:2'],
             'address'       => ['nullable', 'string'],
-            'facility_type' => ['nullable', 'in:manufacturing,warehouse,office,other'],
+            'facility_type' => ['nullable', 'in:manufacturing,warehouse,office,other,weaving,knitting,dyeing,printing,wet_processing,garment_assembly'],
             'energy_types'  => ['nullable', 'array'],
             'main_products' => ['nullable', 'string'],
         ]);
@@ -41,7 +41,7 @@ class SupplierFacilityController extends Controller
             'name'          => ['sometimes', 'string', 'max:255'],
             'country'       => ['nullable', 'string', 'size:2'],
             'address'       => ['nullable', 'string'],
-            'facility_type' => ['nullable', 'in:manufacturing,warehouse,office,other'],
+            'facility_type' => ['nullable', 'in:manufacturing,warehouse,office,other,weaving,knitting,dyeing,printing,wet_processing,garment_assembly'],
             'energy_types'  => ['nullable', 'array'],
             'main_products' => ['nullable', 'string'],
             'is_active'     => ['boolean'],

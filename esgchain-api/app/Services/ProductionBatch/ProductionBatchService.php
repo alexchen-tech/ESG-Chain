@@ -2,8 +2,8 @@
 
 namespace App\Services\ProductionBatch;
 
-use App\Models\BuyerProductTradeGood;
 use App\Models\ProductionBatch;
+use App\Models\SalesProduct;
 use App\Models\Supplier;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -12,7 +12,7 @@ class ProductionBatchService
 {
     /**
      * Upsert a production batch from Webhook or CSV payload.
-     * Matches erp_product_code → buyer_product_trade_good_id
+     * Matches erp_product_code → sales_product_id
      * Matches supplier_code → supplier_id
      */
     public function upsertFromPayload(array $data): ProductionBatch
@@ -26,14 +26,15 @@ class ProductionBatchService
             $supplierId = $data['supplier_id'];
         }
 
-        $exportLinkId = null;
+        // 批號↔商品對應：以 ERP 產品編碼比對 SalesProduct.product_code（唯一產品主檔）
+        $salesProductId = null;
         if (!empty($data['erp_product_code'])) {
-            $matches = BuyerProductTradeGood::where('erp_product_code', $data['erp_product_code'])->get();
+            $matches = SalesProduct::where('product_code', $data['erp_product_code'])->get();
             if ($matches->count() === 1) {
-                $exportLinkId = $matches->first()->id;
+                $salesProductId = $matches->first()->id;
             } elseif ($matches->count() > 1) {
-                $exportLinkId = $matches->first()->id;
-                Log::warning('ProductionBatch: multiple export links matched', [
+                $salesProductId = $matches->first()->id;
+                Log::warning('ProductionBatch: multiple sales products matched', [
                     'erp_product_code' => $data['erp_product_code'],
                     'count'            => $matches->count(),
                 ]);
@@ -44,7 +45,7 @@ class ProductionBatchService
             ['erp_batch_no' => $data['erp_batch_no']],
             array_filter([
                 'erp_order_no'                => $data['erp_order_no'] ?? null,
-                'buyer_product_trade_good_id' => $exportLinkId,
+                'sales_product_id'            => $salesProductId,
                 'supplier_id'                 => $supplierId,
                 'production_date'             => $data['production_date'] ?? null,
                 'quantity'                    => $data['quantity'] ?? 0,
@@ -98,8 +99,6 @@ class ProductionBatchService
         $query = ProductionBatch::with([
             'supplier:id,name,code',
             'salesProduct:id,name,product_code,model_no',
-            'exportLink.buyerProduct:id,name,product_code',
-            'exportLink.tradeGood:id,name,product_code',
             'rawMaterialOrigins',
         ]);
 
@@ -107,12 +106,12 @@ class ProductionBatchService
             $query->where('supplier_id', $filters['supplier_id']);
         }
 
-        // 匹配 = 已連結產品（sales_product_id 直連）或舊出口連結（buyer_product_trade_good_id）
+        // 匹配 = 已連結產品（sales_product_id 直連，唯一產品主檔）
         if (!empty($filters['matched_status'])) {
             if ($filters['matched_status'] === 'matched') {
-                $query->where(fn($q) => $q->whereNotNull('sales_product_id')->orWhereNotNull('buyer_product_trade_good_id'));
+                $query->whereNotNull('sales_product_id');
             } elseif ($filters['matched_status'] === 'unmatched') {
-                $query->whereNull('sales_product_id')->whereNull('buyer_product_trade_good_id');
+                $query->whereNull('sales_product_id');
             }
         }
 

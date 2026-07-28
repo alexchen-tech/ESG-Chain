@@ -83,20 +83,15 @@ class SupplierController extends Controller
 
     public function update(Request $request, Supplier $supplier): JsonResponse
     {
+        // name/code/country_code/industry/tier/vat_number/erp_vendor_codes/spend_amount/address/website
+        // 為 ERP 匯入的廠商主檔資料，一律唯讀，不可從一般編輯 API 修改；
+        // 僅 ESG-Chain 自有分類（industry_group/sasb_industry_id/group_id）可編輯。
+        // 供應商「活躍狀態」（onboarding_stage）另有專屬的 onboarding-transition 端點，
+        // 不在此 API 開放。
         $validated = $request->validate([
-            'name'             => ['sometimes', 'string', 'max:255'],
-            'code'             => ['sometimes', 'nullable', 'string', 'max:50', 'unique:suppliers,code,' . $supplier->id],
-            'country_code'     => ['sometimes', 'nullable', 'string', 'size:2'],
-            'industry'         => ['sometimes', 'nullable', 'string'],
             'industry_group'   => ['sometimes', 'nullable', 'in:製造業,勞動密集製造,農林漁業,科技電子,物流倉儲,原物料化工,服務業'],
             'sasb_industry_id' => ['sometimes', 'nullable', 'uuid', 'exists:sasb_industries,id'],
-            'tier'             => ['sometimes', 'integer', 'in:1,2,3'],
             'group_id'         => ['sometimes', 'nullable', 'uuid', 'exists:supplier_groups,id'],
-            'address'          => ['sometimes', 'nullable', 'string'],
-            'website'          => ['sometimes', 'nullable', 'url'],
-            'vat_number'       => ['sometimes', 'nullable', 'string', 'max:60'],
-            'erp_vendor_codes' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'spend_amount'     => ['sometimes', 'nullable', 'numeric', 'min:0'],
         ]);
 
         $updated = $this->service->update($supplier, $validated);
@@ -111,7 +106,7 @@ class SupplierController extends Controller
     public function transition(Request $request, Supplier $supplier): JsonResponse
     {
         $validated = $request->validate([
-            'status' => ['required', 'string', 'in:active,inactive,suspended'],
+            'status' => ['required', 'string', 'in:active,inactive'],
             'reason' => ['nullable', 'string'],
         ]);
 

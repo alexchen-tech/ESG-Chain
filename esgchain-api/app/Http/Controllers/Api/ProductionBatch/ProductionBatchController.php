@@ -25,8 +25,6 @@ class ProductionBatchController extends Controller
         $batch = ProductionBatch::with([
             'supplier:id,name,code',
             'salesProduct:id,name,product_code,model_no',
-            'exportLink.buyerProduct:id,name,product_code',
-            'exportLink.tradeGood:id,name,product_code',
             'rawMaterialOrigins',
         ])->findOrFail($id);
 
@@ -38,16 +36,16 @@ class ProductionBatchController extends Controller
         $batch = ProductionBatch::findOrFail($id);
 
         $data = $request->validate([
-            'buyer_product_trade_good_id' => ['nullable', 'uuid', 'exists:buyer_product_trade_goods,id'],
-            'production_date'             => ['nullable', 'date'],
-            'quantity'                    => ['nullable', 'numeric', 'min:0'],
-            'unit'                        => ['nullable', 'string', 'max:20'],
-            'lot_pcf'                     => ['nullable', 'numeric', 'min:0'],
-            'lot_pcf_source'              => ['nullable', 'in:calculated,reported,estimated'],
+            'sales_product_id' => ['nullable', 'uuid', 'exists:sales_products,id'],
+            'production_date'  => ['nullable', 'date'],
+            'quantity'         => ['nullable', 'numeric', 'min:0'],
+            'unit'             => ['nullable', 'string', 'max:20'],
+            'lot_pcf'          => ['nullable', 'numeric', 'min:0'],
+            'lot_pcf_source'   => ['nullable', 'in:calculated,reported,estimated'],
         ]);
 
         $batch->update($data);
-        $batch->load(['supplier:id,name,code', 'salesProduct:id,name,product_code,model_no', 'exportLink.buyerProduct:id,name,product_code', 'exportLink.tradeGood:id,name,product_code', 'rawMaterialOrigins']);
+        $batch->load(['supplier:id,name,code', 'salesProduct:id,name,product_code,model_no', 'rawMaterialOrigins']);
 
         return response()->json(['success' => true, 'data' => $this->format($batch)]);
     }
@@ -64,15 +62,11 @@ class ProductionBatchController extends Controller
             'id'                          => $b->id,
             'erp_batch_no'                => $b->erp_batch_no,
             'erp_order_no'                => $b->erp_order_no,
-            'buyer_product_trade_good_id' => $b->buyer_product_trade_good_id,
-            // 匹配 = 已連結產品（sales_product_id 直連）或舊出口連結
-            'matched'                     => $b->sales_product_id !== null || $b->buyer_product_trade_good_id !== null,
+            'matched'                     => $b->sales_product_id !== null,
             'sales_product_id'            => $b->sales_product_id,
             'sales_product_name'          => $b->salesProduct?->name,
             'sales_product_code'          => $b->salesProduct?->product_code,
             'sales_product_model_no'      => $b->salesProduct?->model_no,
-            'buyer_product_name'          => $b->exportLink?->buyerProduct?->name,
-            'trade_good_name'             => $b->exportLink?->tradeGood?->name,
             'supplier_id'                 => $b->supplier_id,
             'supplier_name'               => $b->supplier?->name,
             'supplier_code'               => $b->supplier?->code,

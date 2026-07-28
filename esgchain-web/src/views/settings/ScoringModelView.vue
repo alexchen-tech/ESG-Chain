@@ -13,7 +13,11 @@
       </div>
     </div>
 
-    <FrameworkDefaultWeightPanel />
+    <ScoringModelPanel />
+
+    <div style="margin-top:24px;">
+      <FrameworkDefaultWeightPanel />
+    </div>
 
     <div style="margin-top:24px;">
       <SasbRequiredTopicPanel />
@@ -23,6 +27,7 @@
 
 <script>
 import { useRouter } from 'vue-router'
+import ScoringModelPanel from './ScoringModelPanel.vue'
 import FrameworkDefaultWeightPanel from './FrameworkDefaultWeightPanel.vue'
 import SasbRequiredTopicPanel from './SasbRequiredTopicPanel.vue'
 
@@ -30,6 +35,7 @@ export default {
   name: 'ScoringModelView',
 
   components: {
+    ScoringModelPanel,
     FrameworkDefaultWeightPanel,
     SasbRequiredTopicPanel,
   },

@@ -57,9 +57,10 @@ class SupplierService
         $supplier = Supplier::create($data);
 
         $supplier->statusHistories()->create([
+            'type' => 'erp_status',
             'from_status' => null,
             'to_status' => $supplier->status,
-            'reason' => '供應商建立',
+            'reason' => '供應商建立（資料匯入時預設值）',
             'changed_by' => $userId,
         ]);
 
