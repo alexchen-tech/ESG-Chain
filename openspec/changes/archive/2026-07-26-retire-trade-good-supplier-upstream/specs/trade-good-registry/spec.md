@@ -1,21 +1,4 @@
-### Requirement: 出口品目錄管理
-
-系統 SHALL 允許中心廠 / 貿易商（buyer / comply 角色）建立、編輯、刪除自有出口品項。每個品項須包含名稱、HS Code、單位、單價、幣別，不再強制關聯單一供應商。
-
-#### Scenario: 建立出口品項
-
-- **WHEN** 使用者填寫名稱與 HS Code 並送出
-- **THEN** 系統建立 TradeGood，並自動判定 is_cbam_applicable / cbam_category / material_group_id
-
-#### Scenario: CBAM 自動判定
-
-- **WHEN** 使用者輸入 HS Code（如 7208.10）
-- **THEN** 系統根據前2碼自動設定 is_cbam_applicable=true, cbam_category='steel'
-
-#### Scenario: 刪除有上游供應商關聯的品項
-
-- **WHEN** 使用者刪除已有 trade_good_suppliers 記錄的品項
-- **THEN** 系統 cascade 刪除關聯記錄，並回傳 200
+## MODIFIED Requirements
 
 ### Requirement: 上游供應商 BOM 關聯管理
 
@@ -36,25 +19,6 @@
 - **WHEN** 產品的 BOM 明細皆未套用核可供應商清單，對應物料也尚無核可供應商
 - **THEN** 系統回傳空的上游供應商清單，視為「尚未設定」而非錯誤
 
-### Requirement: 法規暴露視圖
-
-系統 SHALL 在 TradeGood 清單提供每個品項的 CBAM 與 EUDR 法規狀態，讓中心廠一眼看出合規風險。
-
-#### Scenario: CBAM 狀態顯示
-
-- **WHEN** TradeGood 的 is_cbam_applicable = true
-- **THEN** 清單顯示 CBAM 類別標籤（steel / aluminium / cement 等）
-
-#### Scenario: EUDR 暴露判定
-
-- **WHEN** API 回傳 TradeGood 清單
-- **THEN** 每個品項含 is_eudr_applicable 欄位：若任一 trade_good_suppliers 的 material_group.required_doc_types 含 'EUDR_DDS' 則為 true
-
-#### Scenario: 上游合規摘要
-
-- **WHEN** API 回傳 TradeGood 清單
-- **THEN** 每個品項含 upstream_compliance_status（valid / expiring_soon / expired / missing / unconfigured），取所有上游供應商中最差狀態
-
 ### Requirement: 上游供應商合規展開面板
 
 系統 SHALL 在前端「BOM 明細」分頁提供唯讀的上游供應商彙總區塊，列出 BOM 衍生的所有上游供應商及其每份合規文件的狀態；不再提供手動新增/移除供應商的操作介面。
@@ -68,3 +32,10 @@
 
 - **WHEN** 使用者檢視產品詳情頁
 - **THEN** 不再顯示獨立的「上游供應商」分頁與新增/移除供應商表單
+
+## REMOVED Requirements
+
+### Requirement: EUDR 暴露判定（trade_good_suppliers 版本）
+
+**Reason**：EUDR 適用性判定已改為讀取 BOM 明細（非 `trade_good_suppliers`），與本次「上游供應商 BOM 關聯管理」改為 BOM 衍生的方向一致，避免規格文件與既有程式碼行為不一致。
+**Migration**：EUDR 暴露判定邏輯詳見 `product-regulation-inference` 能力規格（若尚未涵蓋此判定細節，於該規格後續補充）。

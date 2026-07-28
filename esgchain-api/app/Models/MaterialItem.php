@@ -26,6 +26,8 @@ class MaterialItem extends Model
         'pir_percentage',
         'bio_based_percentage',
         'recyclability_rating',
+        'fiber_type',
+        'microfiber_release_risk',
     ];
 
     protected $casts = [
@@ -69,5 +71,11 @@ class MaterialItem extends Model
     public function complianceAlerts(): HasMany
     {
         return $this->hasMany(ChemicalComplianceAlert::class);
+    }
+
+    /** 物料層級核可供應商清單（主/備），所有使用此物料的產品共用 */
+    public function approvedSuppliers(): HasMany
+    {
+        return $this->hasMany(MaterialItemSupplier::class)->orderBy('sort_order');
     }
 }

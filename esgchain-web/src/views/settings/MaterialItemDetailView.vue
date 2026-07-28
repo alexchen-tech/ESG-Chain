@@ -61,7 +61,11 @@
           </div>
 
           <div class="section-title" style="margin-top:20px;">可回收成分</div>
-          <div class="detail-grid" style="grid-template-columns:repeat(4,1fr);">
+          <div class="detail-grid" style="grid-template-columns:repeat(6,1fr);">
+            <div class="detail-item">
+              <span class="detail-label">纖維類型</span>
+              <span class="detail-value">{{ FIBER_TYPE_LABELS[item.fiber_type ?? ''] ?? '—' }}</span>
+            </div>
             <div class="detail-item">
               <span class="detail-label">PCR（消費後回收）</span>
               <span class="detail-value font-mono">{{ item.pcr_percentage != null ? item.pcr_percentage + '%' : '—' }}</span>
@@ -78,6 +82,10 @@
               <span class="detail-label">可回收性評級</span>
               <span class="detail-value">{{ RECYCLABILITY_LABELS[item.recyclability_rating ?? ''] ?? '—' }}</span>
             </div>
+            <div class="detail-item">
+              <span class="detail-label">塑膠微纖維釋放風險</span>
+              <span class="detail-value">{{ MICROFIBER_RISK_LABELS[item.microfiber_release_risk ?? ''] ?? '—' }}</span>
+            </div>
           </div>
         </div>
 
@@ -89,76 +97,184 @@
           </div>
           <div v-if="emissionLoading" class="empty-inline">載入中...</div>
           <div v-else-if="!emissionGroups.length" class="empty-inline">尚無碳排記錄</div>
-          <table v-else class="data-table">
-            <thead>
-              <tr>
-                <th>供應商</th>
-                <th style="text-align:right;">最新碳排值</th>
-                <th>來源</th>
-                <th>提報期間</th>
-                <th>記錄數</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="g in emissionGroups" :key="g.supplier_id ?? 'buyer'">
-                <td>
-                  <span style="font-size:13px;font-weight:500;">{{ g.supplier_name }}</span>
-                  <span v-if="!g.latest.supplier_id" class="badge badge-gray" style="font-size:10px;margin-left:6px;">未指定 BOM</span>
-                </td>
-                <td style="text-align:right;">
-                  <span v-if="g.latest.is_estimated" style="margin-right:4px;" title="AI 估算">🤖</span>
-                  <span v-if="g.latest.is_flagged" style="margin-right:4px;" :title="g.latest.flag_reason ?? '異常'">⚠️</span>
-                  <span class="font-mono" style="font-weight:700;">{{ g.latest.emissions_value.toFixed(4) }}</span>
-                  <span style="font-size:11px;color:var(--text-secondary);margin-left:3px;">kgCO₂e/{{ item.unit || '件' }}</span>
-                </td>
-                <td><span class="source-badge" :class="`source-${g.latest.source}`">{{ sourceLabel(g.latest.source) }}</span></td>
-                <td style="font-size:12px;color:var(--text-secondary);">{{ g.latest.reported_period || '—' }}</td>
-                <td style="font-size:12px;color:var(--text-secondary);">{{ g.history_count }} 筆</td>
-                <td>
-                  <button v-if="!g.latest.is_flagged" class="btn btn-secondary btn-sm" style="font-size:11px;" @click="openFlagModal(g.latest)">標記異常</button>
-                  <button v-else class="btn btn-secondary btn-sm" style="font-size:11px;color:#d97706;" :disabled="isSubmitting" @click="doUnflag(g.latest.id)">取消標記</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <template v-else>
+            <!-- 同物料跨供應商比較摘要 -->
+            <div v-if="emissionStats" class="compare-stats">
+              <div class="compare-stat">
+                <div class="compare-stat-label">最低（最佳）</div>
+                <div class="compare-stat-value">{{ emissionStats.min.value.toFixed(4) }}<span class="compare-stat-unit">/{{ item.unit || '件' }}</span></div>
+                <div class="compare-stat-supplier">{{ emissionStats.min.supplier_name }}</div>
+              </div>
+              <div class="compare-stat">
+                <div class="compare-stat-label">平均</div>
+                <div class="compare-stat-value">{{ emissionStats.avg.toFixed(4) }}<span class="compare-stat-unit">/{{ item.unit || '件' }}</span></div>
+                <div class="compare-stat-supplier">{{ emissionStats.count }} 家可比較</div>
+              </div>
+              <div class="compare-stat">
+                <div class="compare-stat-label">最高</div>
+                <div class="compare-stat-value">{{ emissionStats.max.value.toFixed(4) }}<span class="compare-stat-unit">/{{ item.unit || '件' }}</span></div>
+                <div class="compare-stat-supplier">{{ emissionStats.max.supplier_name }}</div>
+              </div>
+            </div>
+
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>供應商</th>
+                  <th style="text-align:right;">最新碳排值</th>
+                  <th style="width:160px;">相對比較</th>
+                  <th>來源</th>
+                  <th>提報期間</th>
+                  <th>記錄數</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="g in sortedEmissionGroups" :key="g.supplier_id ?? 'buyer'">
+                  <td>
+                    <span style="font-size:13px;font-weight:500;">{{ g.supplier_name }}</span>
+                    <span v-if="!g.latest.supplier_id" class="badge badge-gray" style="font-size:10px;margin-left:6px;">未指定 BOM</span>
+                  </td>
+                  <td style="text-align:right;">
+                    <span v-if="g.latest.is_estimated" style="margin-right:4px;" title="AI 估算">🤖</span>
+                    <span v-if="g.latest.is_flagged" style="margin-right:4px;" :title="g.latest.flag_reason ?? '異常'">⚠️</span>
+                    <span class="font-mono" style="font-weight:700;">{{ g.latest.emissions_value.toFixed(4) }}</span>
+                    <span style="font-size:11px;color:var(--text-secondary);margin-left:3px;">kgCO₂e/{{ item.unit || '件' }}</span>
+                  </td>
+                  <td>
+                    <div v-if="!g.latest.is_flagged && emissionStats" class="meter-cell">
+                      <div class="meter-track">
+                        <div class="meter-fill" :style="{ width: meterWidth(g.latest.emissions_value) + '%', background: meterColor(g.latest.emissions_value) }"></div>
+                      </div>
+                      <span v-if="g.latest.emissions_value === emissionStats.min.value" class="meter-tag meter-tag--best">最低</span>
+                      <span v-else-if="g.latest.emissions_value === emissionStats.max.value" class="meter-tag meter-tag--worst">最高</span>
+                    </div>
+                    <span v-else style="font-size:11px;color:var(--text-secondary);">已標記異常，排除比較</span>
+                  </td>
+                  <td><span class="source-badge" :class="`source-${g.latest.source}`">{{ sourceLabel(g.latest.source) }}</span></td>
+                  <td style="font-size:12px;color:var(--text-secondary);">{{ g.latest.reported_period || '—' }}</td>
+                  <td style="font-size:12px;color:var(--text-secondary);">{{ g.history_count }} 筆</td>
+                  <td>
+                    <button v-if="!g.latest.is_flagged" class="btn btn-secondary btn-sm" style="font-size:11px;" @click="openFlagModal(g.latest)">標記異常</button>
+                    <button v-else class="btn btn-secondary btn-sm" style="font-size:11px;color:#d97706;" :disabled="isSubmitting" @click="doUnflag(g.latest.id)">取消標記</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </template>
         </div>
 
         <!-- 來源供應商 -->
         <div v-show="activeTab === 'suppliers'" class="detail-section tab-panel">
-          <div class="section-title" style="margin-bottom:12px;">來源供應商</div>
-          <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">從 BOM 明細推算：此料號在各 BOM 中指定的 primary supplier</p>
-          <div v-if="bomSuppliersLoading" class="empty-inline">載入中...</div>
-          <div v-else-if="!bomSuppliers.length" class="empty-inline">此料號尚未被指定於任何 BOM</div>
-          <table v-else class="data-table">
+          <!-- 物料層級核可供應商清單 -->
+          <div class="section-title" style="margin-bottom:8px;">核可供應商清單（主/備）</div>
+          <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">
+            對此物料只需登記一次，所有使用此物料的產品共用，不需在每個產品的 BOM 明細各自重複登記。
+          </p>
+          <div class="detail-grid" style="grid-template-columns:1fr 1fr auto;margin-bottom:12px;">
+            <div class="detail-item">
+              <span class="detail-label">供應商</span>
+              <select v-model="addApprovedForm.supplier_id" class="form-select">
+                <option value="">— 請選擇 —</option>
+                <option v-for="s in allSuppliers" :key="s.id" :value="s.id">{{ s.name }} ({{ s.code }})</option>
+              </select>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">角色</span>
+              <select v-model="addApprovedForm.role" class="form-select">
+                <option value="primary">主要供應商</option>
+                <option value="alternate">備用供應商</option>
+              </select>
+            </div>
+            <div class="detail-item" style="justify-content:flex-end;">
+              <button class="btn btn-primary btn-sm" :disabled="!addApprovedForm.supplier_id || addingApproved" @click="addApprovedSupplier" style="margin-top:auto;">
+                {{ addingApproved ? '新增中…' : '＋ 新增' }}
+              </button>
+            </div>
+          </div>
+          <div v-if="approvedSuppliersLoading" class="empty-inline">載入中...</div>
+          <div v-else-if="!approvedSuppliers.length" class="empty-inline">尚無核可供應商，請新增第一筆</div>
+          <table v-else class="data-table" style="margin-bottom:20px;">
             <thead>
-              <tr>
-                <th>供應商名稱</th>
-                <th style="text-align:right;width:90px;">BOM 數量</th>
-                <th style="text-align:right;">最新碳排值</th>
-                <th>來源</th>
-                <th>提報期間</th>
-              </tr>
+              <tr><th>供應商</th><th>角色</th><th>來源</th><th style="width:160px;"></th></tr>
             </thead>
             <tbody>
-              <tr v-for="s in bomSuppliers" :key="s.supplier_id">
-                <td style="font-weight:500;">{{ s.supplier_name }}</td>
-                <td style="text-align:right;" class="font-mono">{{ s.bom_count }}</td>
-                <td style="text-align:right;">
-                  <span v-if="s.latest_emission">
-                    <span class="font-mono" style="font-weight:700;">{{ s.latest_emission.emissions_value.toFixed(4) }}</span>
-                    <span style="font-size:11px;color:var(--text-secondary);margin-left:3px;">kgCO₂e/{{ item.unit || '件' }}</span>
-                  </span>
-                  <span v-else style="color:#d97706;font-size:13px;">● 待填報</span>
+              <tr v-for="s in approvedSuppliers" :key="s.id">
+                <td style="font-weight:500;">{{ s.supplier?.name }}</td>
+                <td>
+                  <span v-if="s.role === 'primary'" class="badge badge-green" style="font-size:10px;">主要供應商</span>
+                  <span v-else style="font-size:11px;color:var(--text-secondary);">備用供應商</span>
                 </td>
                 <td>
-                  <span v-if="s.latest_emission" class="source-badge" :class="`source-${s.latest_emission.source}`">{{ sourceLabel(s.latest_emission.source) }}</span>
-                  <span v-else style="color:var(--text-secondary);">—</span>
+                  <span class="source-badge" :class="`source-${s.source}`">{{ sourceLabel(s.source) }}</span>
                 </td>
-                <td style="font-size:12px;color:var(--text-secondary);">{{ s.latest_emission?.reported_period || '—' }}</td>
+                <td>
+                  <button v-if="s.role !== 'primary'" class="btn btn-secondary btn-sm" style="font-size:11px;" @click="setApprovedRole(s, 'primary')">設為主要</button>
+                  <button class="btn btn-danger btn-sm" style="font-size:11px;margin-left:4px;" @click="removeApprovedSupplier(s)">移除</button>
+                </td>
               </tr>
             </tbody>
           </table>
+
+          <div class="section-title" style="margin-bottom:12px;">來源供應商分布</div>
+          <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">
+            此料號在各產品 BOM 中，目前指定的主供應商與其他核准供應商（AVL）碳排比較。可切換主供應商以改用更低碳的核准來源。
+          </p>
+          <div v-if="bomSuppliersLoading" class="empty-inline">載入中...</div>
+          <div v-else-if="!bomSuppliers.length" class="empty-inline">此料號尚未被指定於任何 BOM</div>
+          <div v-else class="bom-line-groups">
+            <div v-for="line in bomSuppliers" :key="line.bom_line_id" class="bom-line-group">
+              <div class="bom-line-group-head">
+                <router-link :to="`/sales-products/${line.sales_product_id}`" class="bom-line-product-link">
+                  {{ line.product_name }}
+                  <span class="font-mono" style="font-size:11px;">{{ line.product_model_no || line.product_code }}</span>
+                </router-link>
+                <span v-if="hasSwitchOpportunity(line)" class="switch-hint">⚠ 有更低碳供應商可切換</span>
+              </div>
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>供應商</th>
+                    <th style="text-align:right;">碳排值</th>
+                    <th>來源</th>
+                    <th>角色</th>
+                    <th style="width:100px;"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="s in line.suppliers" :key="s.bom_line_supplier_id" :class="{ 'is-primary-row': s.role === 'primary' }">
+                    <td style="font-weight:500;">{{ s.supplier_name }}</td>
+                    <td style="text-align:right;">
+                      <span v-if="s.emissions_value != null">
+                        <span class="font-mono" style="font-weight:700;">{{ s.emissions_value.toFixed(4) }}</span>
+                        <span style="font-size:11px;color:var(--text-secondary);margin-left:3px;">/{{ item.unit || '件' }}</span>
+                      </span>
+                      <span v-else style="color:#d97706;font-size:13px;">● 待填報</span>
+                    </td>
+                    <td>
+                      <span v-if="s.source" class="source-badge" :class="`source-${s.source}`">{{ sourceLabel(s.source) }}</span>
+                      <span v-else style="color:var(--text-secondary);">—</span>
+                    </td>
+                    <td>
+                      <span v-if="s.role === 'primary'" class="badge badge-green" style="font-size:10px;">主供應商</span>
+                      <span v-else style="font-size:11px;color:var(--text-secondary);">核准供應商</span>
+                    </td>
+                    <td>
+                      <button
+                        v-if="s.role !== 'primary'"
+                        class="btn btn-secondary btn-sm"
+                        style="font-size:11px;"
+                        :disabled="switchingLineId === line.bom_line_id"
+                        @click="doSwitchPrimary(line, s)"
+                      >
+                        {{ switchingLineId === line.bom_line_id ? '切換中…' : '設為主供應商' }}
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         <!-- 化學組成 -->
@@ -274,6 +390,39 @@
               <option value="not_rated">未評估</option>
             </select>
           </div>
+          <div style="flex:0 0 200px;">
+            <label class="form-label">塑膠微纖維釋放風險</label>
+            <select v-model="editForm.microfiber_release_risk" class="form-select">
+              <option value="">未設定</option>
+              <option value="low">低</option>
+              <option value="medium">中</option>
+              <option value="high">高</option>
+              <option value="not_rated">未評估</option>
+            </select>
+          </div>
+          <div style="flex:0 0 220px;">
+            <label class="form-label">纖維類型</label>
+            <select v-model="editForm.fiber_type" class="form-select">
+              <option value="">不適用（化學品/服務類）</option>
+              <option value="cotton">棉 Cotton</option>
+              <option value="organic_cotton">有機棉 Organic Cotton</option>
+              <option value="cotton_blend">棉混紡 Cotton Blend</option>
+              <option value="recycled_polyester">再生聚酯 Recycled Polyester</option>
+              <option value="polyester">聚酯纖維 Polyester</option>
+              <option value="nylon">尼龍 Nylon</option>
+              <option value="wool">羊毛 Wool</option>
+              <option value="linen">麻 Linen</option>
+              <option value="silk">絲 Silk</option>
+              <option value="lyocell">天絲 Lyocell</option>
+              <option value="spandex">彈性纖維 Spandex</option>
+              <option value="acrylic">壓克力纖維 Acrylic</option>
+              <option value="rubber">橡膠 Rubber</option>
+              <option value="wood_pulp">木漿 Wood Pulp</option>
+              <option value="pta_feedstock">石化原料 PTA Feedstock</option>
+              <option value="metal">金屬 Metal</option>
+              <option value="other">其他</option>
+            </select>
+          </div>
           <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-top:16px;">
             <input type="checkbox" v-model="editForm.is_active" />
             <span>啟用此料號</span>
@@ -370,7 +519,7 @@
 
 <script lang="ts">
 import { defineComponent } from 'vue'
-import { materialItemApi, materialGroupApi, type MaterialItem, type MaterialGroup, type MaterialBomSupplier } from '@/api/modules/compliance'
+import { materialItemApi, materialGroupApi, type MaterialItem, type MaterialGroup, type MaterialBomLineRow, type MaterialBomLineSupplierOption, type MaterialItemSupplier } from '@/api/modules/compliance'
 import { materialEmissionApi, type MaterialEmissionGroup, type MaterialItemEmission } from '@/api/modules/materialEmissions'
 import { chemicalApi, type MaterialItemChemical } from '@/api/modules/suppliers'
 import http from '@/api/http'
@@ -389,6 +538,33 @@ const RECYCLABILITY_LABELS: Record<string, string> = {
   not_rated: '未評估',
 }
 
+const MICROFIBER_RISK_LABELS: Record<string, string> = {
+  low: '低',
+  medium: '中',
+  high: '高',
+  not_rated: '未評估',
+}
+
+const FIBER_TYPE_LABELS: Record<string, string> = {
+  cotton: '棉 Cotton',
+  organic_cotton: '有機棉 Organic Cotton',
+  cotton_blend: '棉混紡 Cotton Blend',
+  recycled_polyester: '再生聚酯 Recycled Polyester',
+  polyester: '聚酯纖維 Polyester',
+  nylon: '尼龍 Nylon',
+  wool: '羊毛 Wool',
+  linen: '麻 Linen',
+  silk: '絲 Silk',
+  lyocell: '天絲 Lyocell',
+  spandex: '彈性纖維 Spandex',
+  acrylic: '壓克力纖維 Acrylic',
+  rubber: '橡膠 Rubber',
+  wood_pulp: '木漿 Wood Pulp',
+  pta_feedstock: '石化原料 PTA Feedstock',
+  metal: '金屬 Metal',
+  other: '其他',
+}
+
 export default defineComponent({
   name: 'MaterialItemDetailView',
 
@@ -396,6 +572,8 @@ export default defineComponent({
     return {
       TABS,
       RECYCLABILITY_LABELS,
+      MICROFIBER_RISK_LABELS,
+      FIBER_TYPE_LABELS,
       isLoading: false,
       isSubmitting: false,
       item: null as MaterialItem | null,
@@ -406,9 +584,17 @@ export default defineComponent({
       emissionLoading: false,
       emissionGroups: [] as MaterialEmissionGroup[],
 
+      // 物料層級核可供應商清單（主/備）
+      approvedSuppliers: [] as MaterialItemSupplier[],
+      approvedSuppliersLoading: false,
+      allSuppliers: [] as { id: string; name: string; code: string | null }[],
+      addApprovedForm: { supplier_id: '', role: 'alternate' as 'primary' | 'alternate' },
+      addingApproved: false,
+
       // 來源供應商
       bomSuppliersLoading: false,
-      bomSuppliers: [] as MaterialBomSupplier[],
+      bomSuppliers: [] as MaterialBomLineRow[],
+      switchingLineId: '' as string,
 
       // 化學組成
       chemicalLoading: false,
@@ -427,6 +613,8 @@ export default defineComponent({
         pir_percentage: null as number | null,
         bio_based_percentage: null as number | null,
         recyclability_rating: '',
+        microfiber_release_risk: '',
+        fiber_type: '',
       },
 
       // 代填碳排
@@ -453,6 +641,27 @@ export default defineComponent({
       }
       return opts
     },
+    // 依最新碳排值由低到高排序（排除異常標記，讓最具參考價值的供應商排最前）
+    sortedEmissionGroups(): MaterialEmissionGroup[] {
+      return [...this.emissionGroups].sort((a, b) => {
+        if (a.latest.is_flagged !== b.latest.is_flagged) return a.latest.is_flagged ? 1 : -1
+        return a.latest.emissions_value - b.latest.emissions_value
+      })
+    },
+    // 同物料跨供應商比較統計（排除已標記異常的記錄）
+    emissionStats(): { min: { value: number; supplier_name: string }; max: { value: number; supplier_name: string }; avg: number; count: number } | null {
+      const comparable = this.emissionGroups.filter(g => !g.latest.is_flagged)
+      if (!comparable.length) return null
+      const values = comparable.map(g => g.latest.emissions_value)
+      const minGroup = comparable.reduce((a, b) => a.latest.emissions_value <= b.latest.emissions_value ? a : b)
+      const maxGroup = comparable.reduce((a, b) => a.latest.emissions_value >= b.latest.emissions_value ? a : b)
+      return {
+        min: { value: minGroup.latest.emissions_value, supplier_name: minGroup.supplier_name },
+        max: { value: maxGroup.latest.emissions_value, supplier_name: maxGroup.supplier_name },
+        avg: values.reduce((s, v) => s + v, 0) / values.length,
+        count: comparable.length,
+      }
+    },
   },
 
   async mounted() {
@@ -474,6 +683,8 @@ export default defineComponent({
       this.activeTab = key
       if (key === 'emissions' && !this.emissionGroups.length) await this.loadEmissions()
       if (key === 'suppliers' && !this.bomSuppliers.length) await this.loadBomSuppliers()
+      if (key === 'suppliers' && !this.approvedSuppliers.length) await this.loadApprovedSuppliers()
+      if (key === 'suppliers' && !this.allSuppliers.length) await this.loadAllSuppliers()
       if (key === 'chemicals' && !this.chemicalList.length) await this.loadChemicals()
     },
 
@@ -485,12 +696,74 @@ export default defineComponent({
       } finally { this.emissionLoading = false }
     },
 
+    // ── 物料層級核可供應商清單 ──
+    async loadApprovedSuppliers() {
+      this.approvedSuppliersLoading = true
+      try {
+        const { data } = await materialItemApi.approvedSuppliers(this.itemId)
+        this.approvedSuppliers = data.data
+      } finally { this.approvedSuppliersLoading = false }
+    },
+    async loadAllSuppliers() {
+      try {
+        const http = (await import('@/api/http')).default
+        const res = await http.get<any>('/api/v1/suppliers?per_page=500')
+        this.allSuppliers = res.data?.data?.data ?? res.data?.data ?? []
+      } catch { /* silent */ }
+    },
+    async addApprovedSupplier() {
+      if (!this.addApprovedForm.supplier_id) return
+      this.addingApproved = true
+      try {
+        await materialItemApi.addApprovedSupplier(this.itemId, { ...this.addApprovedForm })
+        this.addApprovedForm = { supplier_id: '', role: 'alternate' }
+        await this.loadApprovedSuppliers()
+      } catch (e: any) {
+        alert(e?.response?.data?.message ?? '新增失敗')
+      } finally { this.addingApproved = false }
+    },
+    async setApprovedRole(s: MaterialItemSupplier, role: 'primary' | 'alternate') {
+      try {
+        await materialItemApi.setApprovedSupplierRole(this.itemId, s.id, role)
+        await this.loadApprovedSuppliers()
+      } catch (e: any) {
+        alert(e?.response?.data?.message ?? '操作失敗')
+      }
+    },
+    async removeApprovedSupplier(s: MaterialItemSupplier) {
+      if (!confirm(`確認將「${s.supplier?.name}」從此物料的核可清單移除？`)) return
+      try {
+        await materialItemApi.removeApprovedSupplier(this.itemId, s.id)
+        await this.loadApprovedSuppliers()
+      } catch (e: any) {
+        alert(e?.response?.data?.message ?? '移除失敗')
+      }
+    },
+
     async loadBomSuppliers() {
       this.bomSuppliersLoading = true
       try {
         const { data } = await materialItemApi.bomSuppliers(this.itemId)
         this.bomSuppliers = data.data
       } finally { this.bomSuppliersLoading = false }
+    },
+
+    // 該 BOM 行是否存在比目前主供應商碳排更低的核准供應商（提示切換機會）
+    hasSwitchOpportunity(line: MaterialBomLineRow): boolean {
+      const primary = line.suppliers.find(s => s.role === 'primary')
+      if (!primary || primary.emissions_value == null) return false
+      return line.suppliers.some(s => s.role !== 'primary' && !s.is_flagged && s.emissions_value != null && s.emissions_value < primary.emissions_value!)
+    },
+
+    async doSwitchPrimary(line: MaterialBomLineRow, target: MaterialBomLineSupplierOption) {
+      if (!confirm(`確認將「${line.product_name}」此物料的主供應商切換為 ${target.supplier_name}？\n將觸發 PCF 重新計算。`)) return
+      this.switchingLineId = line.bom_line_id
+      try {
+        await materialItemApi.switchPrimarySupplier(this.itemId, line.bom_line_id, target.supplier_id)
+        await this.loadBomSuppliers()
+      } catch (e: any) {
+        alert(e?.response?.data?.message ?? '切換失敗')
+      } finally { this.switchingLineId = '' }
     },
 
     async loadChemicals() {
@@ -508,6 +781,21 @@ export default defineComponent({
 
     sourceLabel(source: string): string {
       return { 'portal-self': '供應商提報', 'buyer-input': '買方代填', 'ai-estimated': 'AI估算', 'system_default': '系統預設' }[source] ?? source
+    },
+
+    // 相對比較 meter：此供應商碳排值在同物料所有可比較供應商中的相對位置（0–100%）
+    meterWidth(value: number): number {
+      const s = this.emissionStats
+      if (!s) return 0
+      if (s.max.value === s.min.value) return 50
+      return ((value - s.min.value) / (s.max.value - s.min.value)) * 100
+    },
+    // 單一序列強度色階（淺→深綠），數值越高（碳排越高）顏色越深；純相對排名，非絕對門檻
+    meterColor(value: number): string {
+      const ratio = this.meterWidth(value) / 100
+      const ramp = ['#d4e8dd', '#a3cbb8', '#5a9478', '#1a4d3e']
+      const idx = Math.min(ramp.length - 1, Math.floor(ratio * ramp.length))
+      return ramp[idx]
     },
 
     openBuyerInputModal() {
@@ -609,6 +897,8 @@ export default defineComponent({
         pir_percentage: this.item.pir_percentage ?? null,
         bio_based_percentage: this.item.bio_based_percentage ?? null,
         recyclability_rating: this.item.recyclability_rating ?? '',
+        microfiber_release_risk: this.item.microfiber_release_risk ?? '',
+        fiber_type: this.item.fiber_type ?? '',
       }
     },
 
@@ -628,6 +918,8 @@ export default defineComponent({
           pir_percentage: this.editForm.pir_percentage,
           bio_based_percentage: this.editForm.bio_based_percentage,
           recyclability_rating: (this.editForm.recyclability_rating as any) || null,
+          microfiber_release_risk: (this.editForm.microfiber_release_risk as any) || null,
+          fiber_type: this.editForm.fiber_type || null,
         })
         this.item = data.data
         this.showEditModal = false
@@ -649,22 +941,7 @@ export default defineComponent({
 .detail-layout { display: flex; flex-direction: column; gap: 0; }
 .detail-main { display: flex; flex-direction: column; gap: 0; }
 
-.detail-tabs {
-  display: flex;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-bottom: none;
-  border-radius: 8px 8px 0 0;
-  overflow: hidden;
-}
-.detail-tab {
-  padding: 11px 20px; border: none; background: none; cursor: pointer;
-  font-size: 13.5px; font-weight: 500; color: #57534e;
-  border-bottom: 2px solid transparent; margin-bottom: -1px;
-  transition: all 0.15s; white-space: nowrap;
-}
-.detail-tab:hover { color: var(--text-primary); background: var(--surface-2); }
-.detail-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; background: var(--surface); }
+/* .detail-tabs/.detail-tab 已移至 components.css 共用（跟供應商/銷售產品詳情頁同一套） */
 
 .tab-panel {
   border-radius: 0 0 8px 8px !important;
@@ -675,16 +952,37 @@ export default defineComponent({
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 8px; padding: 20px 24px; margin-bottom: 16px;
 }
-.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 32px; }
-.detail-item { display: flex; flex-direction: column; gap: 6px; }
-.detail-label { font-size: 11px; color: #a8998f; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
-.detail-value { font-size: 14px; color: var(--text-primary); line-height: 1.45; }
+/* .detail-grid/.detail-item/.detail-label/.detail-value 已移至 components.css 共用 */
 .section-title {
   font-size: 11.5px; font-weight: 700; color: var(--text-secondary);
   text-transform: uppercase; letter-spacing: 0.07em;
   margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
 }
 .empty-inline { font-size: 13px; color: var(--text-secondary); padding: 8px 0; }
+
+/* 同物料跨供應商碳排比較 */
+.compare-stats { display: flex; gap: 12px; margin-bottom: 16px; }
+.compare-stat { flex: 1; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; }
+.compare-stat-label { font-size: 11px; color: var(--text-secondary); font-weight: 600; letter-spacing: .02em; }
+.compare-stat-value { font-family: var(--font-mono); font-size: 18px; font-weight: 700; color: var(--text-primary); margin-top: 2px; }
+.compare-stat-unit { font-size: 11px; font-weight: 400; color: var(--text-secondary); }
+.compare-stat-supplier { font-size: 11.5px; color: var(--text-secondary); margin-top: 2px; }
+
+.meter-cell { display: flex; align-items: center; gap: 6px; }
+.meter-track { flex: 1; height: 6px; border-radius: 3px; background: #eef4f1; overflow: hidden; }
+.meter-fill { height: 100%; border-radius: 3px; }
+.meter-tag { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 8px; white-space: nowrap; }
+.meter-tag--best { background: #d1fae5; color: #065f46; }
+.meter-tag--worst { background: #fee2e2; color: #b91c1c; }
+
+/* 來源供應商分布（跨產品 BOM 行） */
+.bom-line-groups { display: flex; flex-direction: column; gap: 18px; }
+.bom-line-group { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+.bom-line-group-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.bom-line-product-link { font-size: 13px; font-weight: 600; color: var(--text-primary); text-decoration: none; display: flex; align-items: center; gap: 6px; }
+.bom-line-product-link:hover { text-decoration: underline; color: var(--accent); }
+.switch-hint { font-size: 11px; color: #d97706; font-weight: 600; }
+.is-primary-row { background: #f0f9f4; }
 
 /* 碳排 source badge */
 .source-badge { font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 600; white-space: nowrap; }

@@ -10,7 +10,7 @@ class SupplierStatusHistory extends Model
 {
     use HasUuids;
 
-    protected $fillable = ['supplier_id', 'from_status', 'to_status', 'reason', 'changed_by'];
+    protected $fillable = ['supplier_id', 'type', 'from_status', 'to_status', 'reason', 'changed_by'];
 
     public function supplier(): BelongsTo
     {

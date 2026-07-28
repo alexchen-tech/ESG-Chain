@@ -49,7 +49,7 @@
       </div>
       <div style="margin-top:14px;padding:10px 14px;background:#f8f6f3;border-radius:6px;font-size:12px;color:var(--text-secondary);line-height:1.8;">
         <strong style="color:var(--text-primary);">物料群組名稱</strong> 參考值：棉紡原料、合成纖維原料、天然纖維輔料、染料化學品、金屬配件、成衣縫製服務、染整加工服務、木製包材服務<br>
-        <strong style="color:var(--text-primary);">recyclability_rating</strong> 參考值：high、medium、low、unknown
+        <strong style="color:var(--text-primary);">recyclability_rating</strong> 參考值：high、medium、low、not_rated
       </div>
     </div>
 
