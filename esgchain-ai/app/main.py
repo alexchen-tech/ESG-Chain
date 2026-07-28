@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import health, scoring, pcf, pcf_batch, risk, reports, material_emission, scope3, chemicals, regulations, path_risk, risk_suggestion, geo_event, impact
+from app.api.routes import health, scoring, pcf, pcf_batch, risk, reports, material_emission, scope3, chemicals, regulations, path_risk, risk_suggestion, geo_event, impact, composition
 from app.core.config import settings
 from app.db.postgresql import engine, Base
 
@@ -47,6 +47,7 @@ app.include_router(path_risk.router, prefix="/ai/v1")
 app.include_router(risk_suggestion.router, prefix="/ai/v1")
 app.include_router(geo_event.router, prefix="/ai/v1")
 app.include_router(impact.router, prefix="/ai/v1")
+app.include_router(composition.router, prefix="/ai/v1")
 
 
 @app.get("/")
