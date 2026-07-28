@@ -14,6 +14,15 @@
   --sidebar-text: #e7e5e4;
   --sidebar-active: #1a4d3e;
 
+  /* 強調色淡底：用來標出頁面裡「這是重點」的區塊/數字，跟一般 surface-2 的中性灰隔開一層層次 */
+  --accent-soft: rgba(26, 77, 62, 0.06);
+  --accent-soft-border: rgba(26, 77, 62, 0.16);
+  --accent-soft-hover: rgba(26, 77, 62, 0.1);
+  /* 次強調色（暖陶土色）：用在少數需要跟主色區隔的第二重點（如警示但非危險等級），避免整站只有綠一種強調色 */
+  --accent-2: #b45309;
+  --accent-2-soft: rgba(180, 83, 9, 0.08);
+  --accent-2-soft-border: rgba(180, 83, 9, 0.2);
+
   --font-sans: 'Noto Sans TC', system-ui, sans-serif;
   --font-title: 'Syne', system-ui, sans-serif;
   --font-mono: 'Fira Code', 'Courier New', monospace;

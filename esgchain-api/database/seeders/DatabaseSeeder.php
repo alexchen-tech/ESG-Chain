@@ -152,9 +152,6 @@ class DatabaseSeeder extends Seeder
         // 生產批號與原料溯源示範資料
         $this->call(ProductionBatchSeeder::class);
 
-        // 出口申報示範資料（含 EUDR DDS 草稿）
-        $this->call(ShipmentSeeder::class);
-
         // 物料主檔
         $this->call(MaterialItemSeeder::class);
 

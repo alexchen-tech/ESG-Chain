@@ -7,14 +7,12 @@ use App\Models\CAP;
 use App\Models\Customer;
 use App\Models\MaterialGroup;
 use App\Models\MaterialItem;
+use App\Models\MaterialItemEmission;
 use App\Models\ProductBomLine;
 use App\Models\ProductionBatch;
 use App\Models\RawMaterialOrigin;
 use App\Models\RiskAssessment;
 use App\Models\SalesProduct;
-use App\Models\Shipment;
-use App\Models\ShipmentLine;
-use App\Models\ShipmentLineBatch;
 use App\Models\Supplier;
 use App\Models\TradeGoodSupplier;
 use App\Services\Risk\ImpactScoreService;
@@ -167,8 +165,11 @@ class ApparelOemDemoSeeder extends Seeder
             $this->ensureTierCoverage();     // T1–T4 全涵蓋 + BOM 標記 ERP 來源
             $this->fixUpstreamSuppliers();   // BOM 變動後重新推導上游供應商
             $this->purgeLegacyBatches();     // 清除舊 BATCH-2025 上游材料批次（未綁產品）
+            $this->purgeOrphanedMaterialEmissions(); // 清除孤兒供應商碳排記錄（supplier_id 對不到任何現存供應商）
+            $this->purgeOrphanedBomLineSuppliers();  // 清除孤兒 BOM 供應商指派（同上，另一張表）
+            $this->fixMultiplePrimarySuppliers();    // 修正單一 BOM 行有多個 primary 的舊資料
+            $this->seedMaterialEmissionComparisons(); // 補齊物料×AVL供應商碳排比較資料
             $this->seedRawMaterialOrigins(); // 批次原料溯源（EUDR DDS / UFLPA 前置資料）
-            $this->seedShipmentAllocations();// 出貨行 ↔ 生產批次分配（DDS 草稿資料鏈）
         });
 
         // 批號×市場出口合規審查 demo（呼叫審查引擎，於 transaction 外執行）
@@ -711,6 +712,122 @@ class ApparelOemDemoSeeder extends Seeder
     }
 
     /**
+     * 清除孤兒供應商碳排記錄：supplier_id 有值但對不到任何現存 Supplier
+     * （歷次重跑 seeder 重建供應商主檔留下的舊 UUID 殘影）。
+     * 不動 supplier_id=null 的 system_default 記錄。
+     */
+    private function purgeOrphanedMaterialEmissions(): void
+    {
+        $validSupplierIds = Supplier::pluck('id')->flip();
+        $orphanedIds = MaterialItemEmission::whereNotNull('supplier_id')->get()
+            ->filter(fn($e) => !$validSupplierIds->has($e->supplier_id))
+            ->pluck('id');
+
+        if ($orphanedIds->isNotEmpty()) {
+            MaterialItemEmission::whereIn('id', $orphanedIds)->delete();
+        }
+    }
+
+    /**
+     * 清除孤兒 BOM 供應商指派：supplier_id 有值但對不到任何現存 Supplier
+     * （同一根因：歷次重跑 seeder 重建供應商主檔留下的舊 UUID 殘影）。
+     */
+    private function purgeOrphanedBomLineSuppliers(): void
+    {
+        $validSupplierIds = Supplier::pluck('id')->flip();
+        $orphanedIds = BomLineSupplier::all()
+            ->filter(fn($b) => !$validSupplierIds->has($b->supplier_id))
+            ->pluck('id');
+
+        if ($orphanedIds->isNotEmpty()) {
+            BomLineSupplier::whereIn('id', $orphanedIds)->delete();
+        }
+    }
+
+    /**
+     * 修正舊資料遺留的「單一 BOM 行有多個 primary 供應商」問題
+     * （每條 BOM 行邏輯上只能有一個主供應商，供 PCF 計算與供應商切換功能依賴此不變量）。
+     * 保留策略：優先保留碳排值最低（最佳）者為 primary，其餘降為 alternate；
+     * 若皆無碳排資料則保留最早建立者。
+     */
+    private function fixMultiplePrimarySuppliers(): void
+    {
+        $affectedLineIds = BomLineSupplier::where('role', 'primary')
+            ->selectRaw('bom_line_id, COUNT(*) as cnt')
+            ->groupBy('bom_line_id')
+            ->having('cnt', '>', 1)
+            ->pluck('bom_line_id');
+
+        foreach ($affectedLineIds as $lineId) {
+            $primaries = BomLineSupplier::where('bom_line_id', $lineId)->where('role', 'primary')->get();
+            $line = ProductBomLine::find($lineId);
+
+            $keep = $primaries->sortBy(function ($p) use ($line) {
+                $emission = $line?->material_item_id
+                    ? MaterialItemEmission::where('material_item_id', $line->material_item_id)
+                        ->where('supplier_id', $p->supplier_id)->value('emissions_value')
+                    : null;
+                return $emission ?? PHP_FLOAT_MAX;
+            })->first();
+
+            BomLineSupplier::where('bom_line_id', $lineId)
+                ->where('role', 'primary')
+                ->where('id', '!=', $keep->id)
+                ->update(['role' => 'alternate']);
+        }
+    }
+
+    /**
+     * 補齊物料×AVL供應商（核准供應商名單，來自 BOM 主供應商指派）的碳排比較資料。
+     * 讓「同物料跨供應商碳足跡比較」在完整料號範圍內有真實意義，而非僅少數示範案例。
+     * 圍繞 system_default 基準值產生決定性變異（依 item+supplier 雜湊，重跑結果穩定）。
+     * 冪等：已有真實回報（任何 seeder/使用者建立）的 material_item_id+supplier_id 組合不覆蓋。
+     */
+    private function seedMaterialEmissionComparisons(): void
+    {
+        $sources = ['portal-self', 'buyer-input', 'ai-estimated'];
+
+        foreach (MaterialItem::all() as $item) {
+            $bomLineIds = ProductBomLine::where('material_item_id', $item->id)->pluck('id');
+            $supplierIds = BomLineSupplier::whereIn('bom_line_id', $bomLineIds)
+                ->pluck('supplier_id')->unique()->values();
+
+            if ($supplierIds->count() < 2) continue;
+
+            $baseline = MaterialItemEmission::where('material_item_id', $item->id)
+                ->whereNull('supplier_id')->where('source', 'system_default')
+                ->value('emissions_value') ?? 5.0;
+
+            foreach ($supplierIds as $supplierId) {
+                if (MaterialItemEmission::where('material_item_id', $item->id)
+                    ->where('supplier_id', $supplierId)->exists()) {
+                    continue; // 已有真實回報，不覆蓋
+                }
+
+                // 決定性變異：-30%~+35%，避免每次重跑數值跳動
+                $seed = crc32($item->item_code . $supplierId);
+                $variance = (($seed % 65) - 30) / 100;
+                $value = max(round($baseline * (1 + $variance), 4), 0.0001);
+                $source = $sources[$seed % count($sources)];
+
+                MaterialItemEmission::withoutEvents(function () use ($item, $supplierId, $value, $source) {
+                    MaterialItemEmission::create([
+                        'material_item_id'   => $item->id,
+                        'supplier_id'        => $supplierId,
+                        'emissions_value'    => $value,
+                        'source'             => $source,
+                        'calculation_method' => 'cradle_to_gate',
+                        'reported_period'    => '2026-Q1',
+                        'is_estimated'       => $source === 'ai-estimated',
+                        'is_flagged'         => false,
+                        'reported_at'        => now(),
+                    ]);
+                });
+            }
+        }
+    }
+
+    /**
      * 清除舊情境的上游材料批次（BATCH-2025-xxx，未綁定 sales_product）
      * 及其原料溯源與出貨行連結——成衣情境的批次一律為產品級。
      */
@@ -783,69 +900,6 @@ class ApparelOemDemoSeeder extends Seeder
                         'certification_ref'   => $cert,
                     ]);
                 }
-            }
-        }
-    }
-
-    /** 出貨行配置：shipment_no => [[product_code, 總量(pcs)], ...] */
-    private const SHIPMENT_LINES = [
-        // EU 出貨：EUDR 主秀（萊賽爾木漿＋天然橡膠皆屬 EUDR 管制原料）
-        'SHIP-202606-001' => [
-            ['GMN-DRS-006', 1200],
-            ['GMN-LEG-007', 800],
-        ],
-        // JP 出貨：非 EUDR 市場，丹寧短裙（UFLPA 棉花溯源故事）
-        'SHIP-202606-002' => [
-            ['GMN-SKT-010', 600],
-        ],
-    ];
-
-    /**
-     * 重建出貨行與批次分配（shipment_line_batches），
-     * 使 DDS 草稿能沿 出貨行 → 批次 → 原料溯源 取得完整地塊資料。
-     * 冪等：逐出貨單清除舊行與分配後重建；不觸碰 pcf_snapshot 鎖定欄位。
-     */
-    private function seedShipmentAllocations(): void
-    {
-        foreach (self::SHIPMENT_LINES as $shipmentNo => $lines) {
-            $shipment = Shipment::where('shipment_no', $shipmentNo)->first();
-            if (!$shipment) continue;
-
-            // 清除既有行與分配
-            $oldLineIds = ShipmentLine::where('shipment_id', $shipment->id)->pluck('id');
-            ShipmentLineBatch::whereIn('shipment_line_id', $oldLineIds)->delete();
-            ShipmentLine::whereIn('id', $oldLineIds)->delete();
-
-            foreach ($lines as [$productCode, $total]) {
-                $product = SalesProduct::where('product_code', $productCode)->first();
-                if (!$product) continue;
-
-                $batches = ProductionBatch::where('sales_product_id', $product->id)
-                    ->orderBy('production_date')->get();
-                if ($batches->isEmpty()) continue;
-
-                // 依批次均分配額，末批吃餘數；加權 PCF = Σ(配額×批次PCF)/總量
-                $per = intdiv($total, $batches->count());
-                $weightedSum = 0.0;
-
-                $line = ShipmentLine::create([
-                    'shipment_id'      => $shipment->id,
-                    'sales_product_id' => $product->id,
-                    'total_quantity'   => $total,
-                    'unit'             => 'pcs',
-                ]);
-
-                foreach ($batches as $k => $batch) {
-                    $alloc = ($k === $batches->count() - 1) ? $total - $per * $k : $per;
-                    ShipmentLineBatch::create([
-                        'shipment_line_id'    => $line->id,
-                        'production_batch_id' => $batch->id,
-                        'allocated_quantity'  => $alloc,
-                    ]);
-                    $weightedSum += $alloc * (float) ($batch->lot_pcf ?? 0);
-                }
-
-                $line->update(['weighted_pcf' => round($weightedSum / max($total, 1), 4)]);
             }
         }
     }
