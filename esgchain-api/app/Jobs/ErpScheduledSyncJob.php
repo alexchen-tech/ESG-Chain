@@ -22,7 +22,7 @@ class ErpScheduledSyncJob implements ShouldQueue
      * @param string[] $entities 要同步的實體類型，預設全部
      */
     public function __construct(
-        private readonly array $entities = ['suppliers', 'materials', 'bom-lines', 'shipments'],
+        private readonly array $entities = ['suppliers', 'materials', 'products', 'bom-lines'],
     ) {}
 
     public function handle(ErpSyncService $service): void
@@ -38,8 +38,8 @@ class ErpScheduledSyncJob implements ShouldQueue
                 $results[$entity] = match ($entity) {
                     'suppliers' => $service->syncSuppliers($since, 'scheduled'),
                     'materials' => $service->syncMaterials($since, 'scheduled'),
+                    'products' => $service->syncProducts($since, 'scheduled'),
                     'bom-lines' => $service->syncBomLines($since, 'scheduled'),
-                    'shipments' => $service->syncShipments($since, 'scheduled'),
                     default => ['skipped' => true],
                 };
             } catch (\Throwable $e) {

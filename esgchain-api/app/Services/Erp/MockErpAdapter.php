@@ -17,12 +17,12 @@ class MockErpAdapter implements ErpAdapterInterface
         return [];
     }
 
-    public function fetchBomLines(?string $since = null, ?string $productCode = null): array
+    public function fetchProducts(?string $since = null): array
     {
         return [];
     }
 
-    public function fetchShipments(?string $since = null): array
+    public function fetchBomLines(?string $since = null, ?string $productCode = null): array
     {
         return [];
     }

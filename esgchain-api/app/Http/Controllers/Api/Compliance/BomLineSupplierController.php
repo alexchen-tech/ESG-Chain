@@ -6,9 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Jobs\DispatchMaterialEmissionEstimate;
 use App\Jobs\PcfEmissionGapScanJob;
 use App\Models\BomLineSupplier;
-use App\Models\BuyerProduct;
 use App\Models\MaterialItemEmission;
 use App\Models\ProductBomLine;
+use App\Models\SalesProduct;
 use App\Services\PCF\PcfCalculationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,7 +20,7 @@ class BomLineSupplierController extends Controller
         private readonly PcfCalculationService $pcfService
     ) {}
 
-    public function setRole(Request $request, BuyerProduct $buyerProduct, ProductBomLine $bomLine, BomLineSupplier $bomLineSupplier): JsonResponse
+    public function setRole(Request $request, SalesProduct $salesProduct, ProductBomLine $bomLine, BomLineSupplier $bomLineSupplier): JsonResponse
     {
         abort_if($bomLineSupplier->bom_line_id !== $bomLine->id, 404);
 
@@ -41,12 +41,12 @@ class BomLineSupplierController extends Controller
 
         // 角色升為 primary：觸發缺口掃描（4.1）
         if ($validated['role'] === 'primary') {
-            PcfEmissionGapScanJob::dispatch($buyerProduct->id, $bomLineSupplier->supplier_id, 'system_supplier_change');
+            PcfEmissionGapScanJob::dispatch($salesProduct->id, $bomLineSupplier->supplier_id, 'system_supplier_change');
         }
 
         // 非同步觸發 PCF 重算（同步呼叫）
-        dispatch(function () use ($buyerProduct) {
-            $this->pcfService->snapshot($buyerProduct);
+        dispatch(function () use ($salesProduct) {
+            $this->pcfService->snapshot($salesProduct);
         })->afterResponse();
 
         return response()->json([
@@ -55,7 +55,7 @@ class BomLineSupplierController extends Controller
         ]);
     }
 
-    public function store(Request $request, BuyerProduct $buyerProduct, ProductBomLine $bomLine): JsonResponse
+    public function store(Request $request, SalesProduct $salesProduct, ProductBomLine $bomLine): JsonResponse
     {
         $validated = $request->validate([
             'supplier_id' => ['required', 'uuid', 'exists:suppliers,id'],
@@ -103,7 +103,7 @@ class BomLineSupplierController extends Controller
 
         // 4.1: 新增 primary supplier 觸發缺口掃描
         if ($validated['role'] === 'primary') {
-            PcfEmissionGapScanJob::dispatch($buyerProduct->id, $validated['supplier_id'], 'system_supplier_change');
+            PcfEmissionGapScanJob::dispatch($salesProduct->id, $validated['supplier_id'], 'system_supplier_change');
         }
 
         // 若為 primary 且無碳排記錄，觸發 AI 估算
@@ -128,7 +128,7 @@ class BomLineSupplierController extends Controller
         ], 201);
     }
 
-    public function destroy(BuyerProduct $buyerProduct, ProductBomLine $bomLine, BomLineSupplier $bomLineSupplier): JsonResponse
+    public function destroy(SalesProduct $salesProduct, ProductBomLine $bomLine, BomLineSupplier $bomLineSupplier): JsonResponse
     {
         abort_if($bomLineSupplier->bom_line_id !== $bomLine->id, 404);
 

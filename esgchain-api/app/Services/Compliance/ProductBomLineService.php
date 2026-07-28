@@ -52,6 +52,23 @@ class ProductBomLineService
             $this->assertNoCycle($product->id, $data['child_sales_product_id']);
         }
 
-        return $product->bomLines()->create($data);
+        $line = $product->bomLines()->create($data);
+        $product->syncInferredRegulations();
+
+        return $line;
+    }
+
+    public function update(SalesProduct $product, ProductBomLine $bomLine, array $data): ProductBomLine
+    {
+        $bomLine->update($data);
+        $product->syncInferredRegulations();
+
+        return $bomLine;
+    }
+
+    public function delete(SalesProduct $product, ProductBomLine $bomLine): void
+    {
+        $bomLine->delete();
+        $product->syncInferredRegulations();
     }
 }

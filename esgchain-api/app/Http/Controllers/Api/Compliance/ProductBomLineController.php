@@ -128,7 +128,7 @@ class ProductBomLineController extends Controller
             }
         }
 
-        $bomLine->update($validated);
+        $this->bomLineService->update($salesProduct, $bomLine, $validated);
 
         return response()->json([
             'success' => true,
@@ -139,7 +139,7 @@ class ProductBomLineController extends Controller
 
     public function destroy(SalesProduct $salesProduct, ProductBomLine $bomLine): JsonResponse
     {
-        $bomLine->delete();
+        $this->bomLineService->delete($salesProduct, $bomLine);
 
         return response()->json([
             'success' => true,

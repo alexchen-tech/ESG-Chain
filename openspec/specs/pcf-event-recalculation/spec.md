@@ -26,16 +26,7 @@
 - **WHEN** 嘗試刪除非最新的 PcfSnapshot
 - **THEN** 系統 SHALL 拒絕（soft delete 亦不允許），回傳 403
 
-### Requirement: Shipment 建立時鎖定 PCF 快照
-系統 SHALL 在 Shipment 建立時，將當下 BuyerProduct 的 `latest_pcf_snapshot_id` 寫入 `shipments.pcf_snapshot_id`，此後 PCF 重算不影響已建立 Shipment 的快照參照。
-
-#### Scenario: Shipment 建立後 PCF 更新不影響申報值
-- **WHEN** Shipment 建立（pcf_snapshot_id = V1），之後 PCF 重算產生 V2
-- **THEN** Shipment 的 `pcf_snapshot_id` 仍為 V1，申報值不變
-
-#### Scenario: Shipment 未有 PCF 快照時建立
-- **WHEN** BuyerProduct 尚無任何 PcfSnapshot 時建立 Shipment
-- **THEN** `shipments.pcf_snapshot_id` SHALL 為 null，Shipment 正常建立，PCF 狀態標示為 pending
+> **已移除**：原「Shipment 建立時鎖定 PCF 快照」需求隨出口申報（Shipment）模組一併移除。系統邊界止於出口前合規檢查，出口交易執行（含正式送件的 PCF 數字鎖定）屬 ERP 範疇。
 
 ### Requirement: PcfRequestLine 填報完成後更新狀態
 系統 SHALL 在 `MaterialItemEmission` 建立後，自動查找對應的 `PcfRequestLine`（匹配 material_item_id + pcf_request.supplier_id），將其 status 更新為 `submitted`，`fulfilled_emission_id` 設為新建立的 emission id。當 PcfRequest 下所有 line 均 submitted 時，PcfRequest.status 自動升為 `submitted`。

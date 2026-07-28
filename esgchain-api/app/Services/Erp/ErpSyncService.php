@@ -14,14 +14,19 @@ use Illuminate\Support\Facades\Log;
 
 class ErpSyncService
 {
-    // ERP 擁有的欄位，同步時直接覆蓋
+    // ERP 擁有的欄位，同步時直接覆蓋（status 依匯入資料決定，僅 active/inactive 兩種，變更需寫入稽核歷程）
     private const ERP_OWNED_SUPPLIER_FIELDS = [
-        'erp_code', 'name', 'country', 'industry', 'tier',
+        'erp_code', 'name', 'country', 'industry', 'tier', 'status',
     ];
 
     // ESG-Chain 擁有的欄位，同步時不觸碰
     private const ESG_OWNED_SUPPLIER_FIELDS = [
-        'saq_score', 'risk_level', 'onboarding_stage', 'status',
+        'saq_score', 'risk_level', 'onboarding_stage',
+    ];
+
+    // ERP 擁有的 SalesProduct 欄位，同步時直接覆蓋；applicable_regulations/inferred_regulations/embedded_emissions/emissions_source 為 ESG-Chain 擁有，永不在此清單中
+    private const ERP_OWNED_PRODUCT_FIELDS = [
+        'name', 'product_code', 'hs_code', 'quantity',
     ];
 
     private const ERP_OWNED_BOM_FIELDS = [
@@ -45,11 +50,27 @@ class ErpSyncService
                 $existing = Supplier::where('erp_code', $row['erp_code'] ?? null)->first();
 
                 if ($existing) {
-                    // 只更新 ERP 擁有欄位，跳過 ESG 欄位
+                    // 只更新 ERP 擁有欄位，跳過 ESG 欄位；status 變更需走 transitionStatus 才會留下稽核歷程
                     $erpData = array_intersect_key($row, array_flip(self::ERP_OWNED_SUPPLIER_FIELDS));
+                    $newStatus = $erpData['status'] ?? null;
+                    unset($erpData['status']);
                     $existing->update($erpData);
+                    if ($newStatus !== null && in_array($newStatus, Supplier::STATUSES, true) && $newStatus !== $existing->status) {
+                        $existing->transitionStatus($newStatus, 'ERP 同步', null);
+                    }
                 } else {
-                    Supplier::create(array_intersect_key($row, array_flip(self::ERP_OWNED_SUPPLIER_FIELDS)));
+                    $newSupplierData = array_intersect_key($row, array_flip(self::ERP_OWNED_SUPPLIER_FIELDS));
+                    $newSupplierData['status'] = in_array($newSupplierData['status'] ?? null, Supplier::STATUSES, true)
+                        ? $newSupplierData['status']
+                        : 'active';
+                    $newSupplier = Supplier::create($newSupplierData);
+                    $newSupplier->statusHistories()->create([
+                        'type'        => 'erp_status',
+                        'from_status' => null,
+                        'to_status'   => $newSupplier->status,
+                        'reason'      => '資料匯入時預設值',
+                        'changed_by'  => null,
+                    ]);
                 }
                 $synced++;
             } catch (\Throwable $e) {
@@ -85,6 +106,31 @@ class ErpSyncService
         return ['synced' => $synced, 'total' => count($rows)];
     }
 
+    public function syncProducts(?string $since = null, string $source = 'scheduled'): array
+    {
+        $rows = $this->adapter->fetchProducts($since);
+        $synced = 0;
+
+        foreach ($rows as $row) {
+            try {
+                $erpData = array_filter(
+                    array_intersect_key($row, array_flip(self::ERP_OWNED_PRODUCT_FIELDS)),
+                    fn($v) => $v !== null,
+                );
+
+                SalesProduct::updateOrCreate(
+                    ['product_code' => $row['product_code']],
+                    $erpData,
+                );
+                $synced++;
+            } catch (\Throwable $e) {
+                Log::error('ErpSyncService::syncProducts 失敗', ['row' => $row, 'error' => $e->getMessage()]);
+            }
+        }
+
+        return ['synced' => $synced, 'total' => count($rows)];
+    }
+
     public function syncBomLines(?string $since = null, string $source = 'scheduled'): array
     {
         $rows = $this->adapter->fetchBomLines($since);
@@ -94,7 +140,14 @@ class ErpSyncService
         foreach ($rows as $row) {
             try {
                 DB::transaction(function () use ($row, $source, $now, &$synced) {
-                    $product = SalesProduct::where('product_code', $row['product_code'])->firstOrFail();
+                    // syncProducts 理論上應已先跑過；此處僅作保底，避免 BOM 先到、產品尚未同步時整批被 firstOrFail 靜默丟棄
+                    $product = SalesProduct::firstOrCreate(
+                        ['product_code' => $row['product_code']],
+                        [
+                            'name'    => $row['product_name'] ?? $row['product_code'],
+                            'hs_code' => $row['product_hs_code'] ?? '000000',
+                        ],
+                    );
 
                     $materialItem = null;
                     if (!empty($row['material_code'])) {
@@ -141,15 +194,5 @@ class ErpSyncService
         }
 
         return ['synced' => $synced, 'total' => count($rows)];
-    }
-
-    public function syncShipments(?string $since = null, string $source = 'scheduled'): array
-    {
-        $rows = $this->adapter->fetchShipments($since);
-        // Shipment upsert 由 ShipmentService 處理，此處僅做增量觸發
-        // TODO: 委派 ShipmentService::upsertFromErp() 當 Shipment module 完善後
-        Log::info('ErpSyncService::syncShipments', ['count' => count($rows), 'source' => $source]);
-
-        return ['synced' => 0, 'total' => count($rows)];
     }
 }

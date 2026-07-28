@@ -79,6 +79,8 @@ class MaterialItemController extends Controller
             'pir_percentage'       => ['nullable', 'numeric', 'min:0', 'max:100'],
             'bio_based_percentage' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'recyclability_rating' => ['nullable', 'in:high,medium,low,not_rated'],
+            'fiber_type'           => ['nullable', 'string', 'max:50'],
+            'microfiber_release_risk' => ['nullable', 'in:low,medium,high,not_rated'],
         ]);
 
         $materialItem->update($validated);
@@ -105,50 +107,102 @@ class MaterialItemController extends Controller
         return response()->json(['success' => true, 'message' => '料號已刪除']);
     }
 
+    /**
+     * 此物料在整個產品組合中，各產品的 BOM 行分別指定了哪個供應商為 primary，
+     * 以及該 BOM 行核准供應商名單（AVL）中每家的碳排比較資料，供「切換主供應商」操作使用。
+     * 一個物料可能被多個產品的 BOM 各自指到不同供應商——這裡逐行（逐產品）攤開，
+     * 而非依供應商彙整，讓使用者看得出「同一物料在產品組合裡的供應商分布」。
+     */
     public function bomSuppliers(MaterialItem $materialItem): JsonResponse
     {
-        // 從 BOM 明細推算：此物料被哪些 primary supplier 所供應
         $bomLines = ProductBomLine::where('material_item_id', $materialItem->id)
-            ->with(['bomLineSuppliers' => fn ($q) => $q->where('role', 'primary')->with('supplier')])
+            ->with(['salesProduct:id,name,product_code,model_no', 'bomLineSuppliers.supplier:id,name,code'])
             ->get();
 
-        // 彙整 supplier_id -> { supplier_name, bom_count }
-        $supplierMap = [];
-        foreach ($bomLines as $line) {
-            foreach ($line->bomLineSuppliers as $bls) {
-                $sid = $bls->supplier_id;
-                if (!isset($supplierMap[$sid])) {
-                    $supplierMap[$sid] = [
-                        'supplier_id'   => $sid,
-                        'supplier_name' => $bls->supplier->name ?? $sid,
-                        'bom_count'     => 0,
-                        'latest_emission' => null,
-                    ];
-                }
-                $supplierMap[$sid]['bom_count']++;
-            }
+        $emissionsBySupplier = MaterialItemEmission::where('material_item_id', $materialItem->id)
+            ->whereNotNull('supplier_id')
+            ->orderByDesc('reported_at')
+            ->get()
+            ->unique('supplier_id')
+            ->keyBy('supplier_id');
+
+        $rows = $bomLines->map(function ($line) use ($emissionsBySupplier) {
+            $suppliers = $line->bomLineSuppliers->map(function ($bls) use ($emissionsBySupplier) {
+                $emission = $emissionsBySupplier->get($bls->supplier_id);
+                return [
+                    'bom_line_supplier_id' => $bls->id,
+                    'supplier_id'          => $bls->supplier_id,
+                    'supplier_name'        => $bls->supplier?->name ?? $bls->supplier_id,
+                    'supplier_code'        => $bls->supplier?->code,
+                    'role'                 => $bls->role,
+                    'emissions_value'      => $emission?->emissions_value,
+                    'source'               => $emission?->source,
+                    'is_flagged'           => (bool) ($emission?->is_flagged ?? false),
+                    'reported_period'      => $emission?->reported_period,
+                ];
+            })->sortBy(fn ($s) => $s['emissions_value'] ?? PHP_FLOAT_MAX)->values();
+
+            $primary = $suppliers->firstWhere('role', 'primary');
+
+            return [
+                'bom_line_id'                 => $line->id,
+                'sales_product_id'            => $line->sales_product_id,
+                'product_name'                => $line->salesProduct?->name,
+                'product_code'                => $line->salesProduct?->product_code,
+                'product_model_no'            => $line->salesProduct?->model_no,
+                'current_primary_supplier_id' => $primary['supplier_id'] ?? null,
+                'suppliers'                   => $suppliers,
+            ];
+        })->values();
+
+        return response()->json(['success' => true, 'data' => $rows]);
+    }
+
+    /**
+     * 切換某 BOM 行的主供應商——把選定的 AVL 供應商設為 primary，原 primary 降為 alternate。
+     * 目標供應商必須已在此 BOM 行的核准供應商名單（AVL）中。
+     */
+    public function switchPrimarySupplier(Request $request, MaterialItem $materialItem, ProductBomLine $bomLine): JsonResponse
+    {
+        abort_if($bomLine->material_item_id !== $materialItem->id, 404);
+
+        $validated = $request->validate([
+            'supplier_id' => ['required', 'uuid'],
+        ]);
+
+        $target = $bomLine->bomLineSuppliers()->where('supplier_id', $validated['supplier_id'])->first();
+        if (!$target) {
+            return response()->json([
+                'success' => false,
+                'message' => '此供應商不在該 BOM 行的核准供應商名單中，請先於 BOM 明細新增',
+            ], 422);
         }
 
-        // 補上最新碳排記錄
-        foreach ($supplierMap as $sid => &$entry) {
-            $emission = MaterialItemEmission::where('material_item_id', $materialItem->id)
-                ->where('supplier_id', $sid)
-                ->latest('reported_at')
-                ->first();
+        if ($target->role === 'primary') {
+            return response()->json(['success' => true, 'message' => '此供應商已是主供應商', 'data' => $target]);
+        }
 
-            if ($emission) {
-                $entry['latest_emission'] = [
-                    'emissions_value' => $emission->emissions_value,
-                    'source'          => $emission->source,
-                    'is_flagged'      => (bool) $emission->is_flagged,
-                    'reported_period' => $emission->reported_period,
-                ];
-            }
+        \Illuminate\Support\Facades\DB::transaction(function () use ($bomLine, $target) {
+            $bomLine->bomLineSuppliers()
+                ->where('role', 'primary')
+                ->where('id', '!=', $target->id)
+                ->update(['role' => 'alternate']);
+            $target->update(['role' => 'primary']);
+        });
+
+        \App\Jobs\PcfEmissionGapScanJob::dispatch($bomLine->sales_product_id, $target->supplier_id, 'system_supplier_change');
+
+        $salesProduct = \App\Models\SalesProduct::find($bomLine->sales_product_id);
+        if ($salesProduct) {
+            dispatch(function () use ($salesProduct) {
+                app(\App\Services\PCF\PcfCalculationService::class)->snapshot($salesProduct);
+            })->afterResponse();
         }
 
         return response()->json([
             'success' => true,
-            'data'    => array_values($supplierMap),
+            'data'    => $target->fresh()->load('supplier'),
+            'message' => '主供應商已切換',
         ]);
     }
 
@@ -190,24 +244,40 @@ class MaterialItemController extends Controller
                 }
             }
 
+            $recyclability = $record['recyclability_rating'] ?? null;
+            if ($recyclability !== null && $recyclability !== '' && !in_array($recyclability, ['high', 'medium', 'low', 'not_rated'], true)) {
+                $warnings[] = "第 {$row} 行（{$itemCode}）：recyclability_rating「{$recyclability}」不在 high/medium/low/not_rated 範圍內，已忽略";
+                $recyclability = null;
+            }
+
+            $extra = array_filter([
+                'description'          => $record['description'] ?? null,
+                'net_weight'           => $record['net_weight'] ?? null,
+                'pcr_percentage'       => $record['pcr_percentage'] ?? null,
+                'pir_percentage'       => $record['pir_percentage'] ?? null,
+                'bio_based_percentage' => $record['bio_based_percentage'] ?? null,
+                'recyclability_rating' => $recyclability,
+                'fiber_type'           => $record['fiber_type'] ?? null,
+            ], fn ($v) => $v !== null && $v !== '');
+
             $exists = MaterialItem::where('item_code', $itemCode)->first();
             if ($exists) {
-                $exists->update([
+                $exists->update(array_merge([
                     'name'              => $name,
                     'hs_code'           => $record['hs_code'] ?? null,
                     'unit'              => $record['unit'] ?? null,
                     'material_group_id' => $mgId ?? $exists->material_group_id,
-                ]);
+                ], $extra));
                 $updated++;
             } else {
-                MaterialItem::create([
+                MaterialItem::create(array_merge([
                     'item_code'         => $itemCode,
                     'name'              => $name,
                     'hs_code'           => $record['hs_code'] ?? null,
                     'unit'              => $record['unit'] ?? null,
                     'material_group_id' => $mgId,
                     'is_active'         => true,
-                ]);
+                ], $extra));
                 $created++;
             }
         }

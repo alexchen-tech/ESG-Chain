@@ -137,6 +137,11 @@ class BomLineImportService
             }
         }
 
+        // 匯入完成後即時重算 inferred_regulations，避免依賴儀表板頁面或排程指令才更新
+        if ($created > 0 || $updated > 0) {
+            $product->syncInferredRegulations();
+        }
+
         // 3.2: 匯入完成後非同步觸發碳排缺口掃描及化學合規掃描
         if ($created > 0 || $updated > 0) {
             PcfEmissionGapScanJob::dispatch($product->id, null, 'system_bom_import');

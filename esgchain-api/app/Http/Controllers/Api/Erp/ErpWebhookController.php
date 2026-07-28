@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 
 class ErpWebhookController extends Controller
 {
-    private const SUPPORTED_ENTITIES = ['suppliers', 'materials', 'bom-lines', 'shipments'];
+    private const SUPPORTED_ENTITIES = ['suppliers', 'materials', 'products', 'bom-lines'];
 
     public function __construct(
         private ProductionBatchService $service,
@@ -78,8 +78,8 @@ class ErpWebhookController extends Controller
         $result = match ($entity) {
             'suppliers'  => $this->erpSyncService->syncSuppliers(null, 'webhook'),
             'materials'  => $this->erpSyncService->syncMaterials(null, 'webhook'),
+            'products'   => $this->erpSyncService->syncProducts(null, 'webhook'),
             'bom-lines'  => $this->erpSyncService->syncBomLines(null, 'webhook'),
-            'shipments'  => $this->erpSyncService->syncShipments(null, 'webhook'),
         };
 
         return response()->json([

@@ -56,7 +56,7 @@ ESG-Chain 擁有欄位（永不覆蓋）：
 - **THEN** 系統 SHALL 執行 upsert（不重複建立），回傳相同的 `202 Accepted`
 
 ### Requirement: 排程拉取介面抽象
-系統 SHALL 定義 `ErpAdapterInterface`，包含 `fetchSuppliers(since: Carbon)`、`fetchMaterials(since: Carbon)`、`fetchBomLines(productCode: string)`、`fetchShipments(since: Carbon)` 四個方法，由各 ERP 廠商實作具體 Adapter。
+系統 SHALL 定義 `ErpAdapterInterface`，包含 `fetchSuppliers(since: Carbon)`、`fetchMaterials(since: Carbon)`、`fetchBomLines(productCode: string)` 三個方法，由各 ERP 廠商實作具體 Adapter。
 
 #### Scenario: 排程拉取執行
 - **WHEN** 排程任務觸發（預設每小時）

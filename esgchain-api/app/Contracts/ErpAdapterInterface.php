@@ -19,19 +19,19 @@ interface ErpAdapterInterface
     public function fetchMaterials(?string $since = null): array;
 
     /**
+     * 拉取銷售產品清單（增量）
+     * @param string|null $since ISO8601 時間戳，null 表示全量
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchProducts(?string $since = null): array;
+
+    /**
      * 拉取 BOM 行（增量，依產品過濾或全量）
      * @param string|null $since ISO8601 時間戳
      * @param string|null $productCode 限定產品編碼
      * @return array<int, array<string, mixed>>
      */
     public function fetchBomLines(?string $since = null, ?string $productCode = null): array;
-
-    /**
-     * 拉取出貨記錄（增量）
-     * @param string|null $since ISO8601 時間戳
-     * @return array<int, array<string, mixed>>
-     */
-    public function fetchShipments(?string $since = null): array;
 
     /**
      * 將化學合規標籤推回 ERP（REACH/RoHS 狀態）
