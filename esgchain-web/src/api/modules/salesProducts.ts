@@ -16,6 +16,7 @@ export interface SalesProduct {
   emissions_updated_at: string | null
   is_cbam_applicable: boolean
   cbam_category: string | null
+  dpp_category: string | null
   is_eudr_applicable: boolean
   upstream_compliance_status: 'valid' | 'expiring_soon' | 'expired' | 'missing' | 'unconfigured'
   supplier_count: number
@@ -25,11 +26,43 @@ export interface SalesProduct {
   inferred_regulations: string[] | null
 }
 
+export interface ProductPackaging {
+  id: string
+  sales_product_id: string
+  recycled_content_ratio: number | null
+  recyclable: boolean | null
+  reusable: boolean | null
+  material_description: string | null
+  notes: string | null
+}
+
+export interface ProductBatterySpec {
+  id: string
+  sales_product_id: string
+  battery_category: 'portable' | 'industrial' | 'ev' | 'lmt' | null
+  chemistry: string | null
+  rated_capacity_ah: number | null
+  rated_voltage_v: number | null
+  weight_kg: number | null
+  lithium_recycled_content_ratio: number | null
+  cobalt_recycled_content_ratio: number | null
+  nickel_recycled_content_ratio: number | null
+  lead_recycled_content_ratio: number | null
+  cycle_life: number | null
+  expected_lifetime_years: number | null
+  discharge_efficiency_ratio: number | null
+  initial_capacity_soh_note: string | null
+  operating_temp_range: string | null
+}
+
 export interface SalesProductSupplier {
   id: string
   supplier_id: string
   supplier_name: string
   material_group: string | null
+  supplier_facility_id: string | null
+  supplier_facility_name: string | null
+  facility_type: string | null
   notes: string | null
   status: string
   doc_statuses: { doc_type: string; status: string; expires_at: string | null }[]
@@ -119,11 +152,25 @@ export const salesProductApi = {
   suppliers: (id: string) =>
     http.get<{ success: boolean; data: SalesProductSupplier[] }>(`/api/v1/sales-products/${id}/suppliers`),
 
-  addSupplier: (id: string, payload: { supplier_id: string; material_group_id?: string; notes?: string }) =>
+  addSupplier: (id: string, payload: { supplier_id: string; material_group_id?: string; supplier_facility_id?: string; notes?: string }) =>
     http.post<{ success: boolean; data: any; message: string }>(`/api/v1/sales-products/${id}/suppliers`, payload),
 
   removeSupplier: (productId: string, supplierId: string) =>
     http.delete<{ success: boolean; message: string }>(`/api/v1/sales-products/${productId}/suppliers/${supplierId}`),
+
+  // 包材資訊
+  packaging: (id: string) =>
+    http.get<{ success: boolean; data: ProductPackaging | null }>(`/api/v1/sales-products/${id}/packaging`),
+
+  upsertPackaging: (id: string, payload: Partial<ProductPackaging>) =>
+    http.put<{ success: boolean; data: ProductPackaging; message: string }>(`/api/v1/sales-products/${id}/packaging`, payload),
+
+  // 電池規格（dpp_category = battery 的產品專用）
+  batterySpec: (id: string) =>
+    http.get<{ success: boolean; data: ProductBatterySpec | null }>(`/api/v1/sales-products/${id}/battery-spec`),
+
+  upsertBatterySpec: (id: string, payload: Partial<ProductBatterySpec>) =>
+    http.put<{ success: boolean; data: ProductBatterySpec; message: string }>(`/api/v1/sales-products/${id}/battery-spec`, payload),
 
   // BOM
   bomLines: (id: string) =>

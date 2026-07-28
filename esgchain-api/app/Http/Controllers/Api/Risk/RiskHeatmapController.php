@@ -33,7 +33,10 @@ class RiskHeatmapController extends Controller
             ->pluck('r1.id');
 
         // withTrashed on supplier to include soft-deleted suppliers (heatmap is risk audit, not supplier mgmt)
-        $ras = RiskAssessment::with(['supplier' => fn($q) => $q->withTrashed()->select('id', 'name', 'code', 'country_code', 'risk_score')])
+        $ras = RiskAssessment::with([
+            'supplier' => fn($q) => $q->withTrashed()->select('id', 'name', 'code', 'country_code', 'risk_score', 'group_id'),
+            'supplier.group:id,name',
+        ])
             ->whereIn('id', $latestIds)
             ->orderBy('assessed_at', 'desc')
             ->get();
@@ -63,6 +66,8 @@ class RiskHeatmapController extends Controller
                 'supplier_name' => $ra->supplier?->name,
                 'supplier_code' => $ra->supplier?->code,
                 'country_code'  => $ra->supplier?->country_code,
+                'group_id'      => $ra->supplier?->group_id,
+                'group_name'    => $ra->supplier?->group?->name,
                 'assessed_at'   => $ra->assessed_at?->toIso8601String(),
                 'source_type'   => $ra->source_type ?? 'saq',
                 'dim_e1'        => $ra->dim_e1,

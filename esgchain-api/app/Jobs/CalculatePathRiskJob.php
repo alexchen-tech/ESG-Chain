@@ -36,8 +36,10 @@ class CalculatePathRiskJob implements ShouldQueue
     public function handle(MarketComplianceChecker $checker): void
     {
         $product = TradeGood::with([
-            'tradeGoodSuppliers.materialGroup',
-            'tradeGoodSuppliers.supplier',
+            'bomLines.materialGroup',
+            'bomLines.materialItem.materialGroup',
+            'bomLines.bomLineSuppliers',
+            'bomLines.materialItem.approvedSuppliers',
         ])->find($this->tradeGoodId);
 
         if (!$product) {

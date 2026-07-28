@@ -5,21 +5,10 @@
       <p class="page-subtitle">商品 × 市場路徑風險熱力圖，識別合規義務缺口並支援供應商替換決策</p>
     </div>
 
-    <!-- 入口切換 -->
-    <div class="view-toggle">
-      <button :class="['toggle-btn', { active: pivotBy === 'commodity' }]" @click="pivotBy = 'commodity'">
-        商品優先
-      </button>
-      <button :class="['toggle-btn', { active: pivotBy === 'market' }]" @click="pivotBy = 'market'">
-        市場優先
-      </button>
-    </div>
-
     <div class="main-layout">
-      <!-- 熱力圖 -->
+      <!-- 熱力圖（商品 × 市場） -->
       <div class="heatmap-section">
         <ExportRiskHeatmap
-          :pivot-by="pivotBy"
           :selected-cell="selectedCell"
           @cell-click="onCellClick"
         />
@@ -42,6 +31,7 @@
           :supplier-id="replacementContext.supplierId"
           :supplier-name="replacementContext.supplierName"
           :trade-good-id="selectedCell.tradeGoodId"
+          :market="selectedCell.market"
           @close="replacementContext = null"
         />
       </div>
@@ -65,7 +55,6 @@ export default {
 
   data() {
     return {
-      pivotBy: 'commodity',
       selectedCell: null,
       replacementContext: null,
     }
@@ -88,8 +77,11 @@ export default {
       this.replacementContext = null
     },
 
-    onCreateCap({ supplierId, docType }) {
-      this.$router.push({ name: 'cap', query: { supplier_id: supplierId, doc_type: docType, source_type: 'compliance_doc_gap' } })
+    onCreateCap({ capId, capTitle }) {
+      const goNow = confirm(`已建立「${capTitle}」CAP。是否立即前往查看？`)
+      if (goNow) {
+        this.$router.push({ name: 'cap', query: { highlight: capId } })
+      }
     },
 
     onRequestReplacement({ supplierId, supplierName }) {
@@ -100,31 +92,30 @@ export default {
 </script>
 
 <style scoped>
-.page-container { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
-.page-header { margin-bottom: 1rem; }
-.page-title { font-size: 1.5rem; font-weight: 700; color: var(--accent, #1a4d3e); }
-.page-subtitle { color: #6b7280; font-size: 0.875rem; margin-top: 0.25rem; }
+/* 資料密集頁面靠左對齊，避免寬螢幕時 margin:0 auto 置中產生側邊欄旁的大片留白 */
+.page-container { max-width: 1600px; margin: 0; padding: 1.75rem 2rem 2rem; }
+.page-header { margin-bottom: 1.5rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border, #e2ddd6); }
+.page-title { font-size: 1.4rem; font-weight: 700; color: var(--text-primary, #1c1917); letter-spacing: 0.01em; }
+.page-subtitle { color: var(--text-secondary, #78716c); font-size: 0.85rem; margin-top: 0.35rem; }
 
-.view-toggle { display: flex; gap: 0; margin-bottom: 1rem; }
-.toggle-btn {
-  padding: 0.4rem 1rem; border: 1px solid var(--color-border, #e5e7eb);
-  cursor: pointer; background: white; font-size: 0.875rem;
-}
-.toggle-btn:first-child { border-radius: 0.5rem 0 0 0.5rem; }
-.toggle-btn:last-child  { border-radius: 0 0.5rem 0.5rem 0; }
-.toggle-btn.active { background: var(--accent, #1a4d3e); color: white; border-color: var(--accent, #1a4d3e); }
+/* nowrap：兩欄在中間寬度時靠熱力圖自身的橫向捲動（overflow-x:auto）擠壓，
+   而不是讓 flex-wrap 在任意寬度不受控地把面板擠到下一行，導致版面被切成上下兩段 */
+.main-layout { display: flex; align-items: flex-start; gap: 1.5rem; flex-wrap: nowrap; }
+@media (max-width: 1024px) { .main-layout { flex-direction: column; flex-wrap: wrap; } }
 
-.main-layout { display: grid; grid-template-columns: 1fr 380px; gap: 1.5rem; align-items: start; }
-@media (max-width: 1024px) { .main-layout { grid-template-columns: 1fr; } }
+/* flex-shrink 讓表格在空間不足時自己觸發內部橫向捲動，不會撐爆整個版面把面板推到畫面外；
+   空間充足時 flex-basis:auto 讓表格照內容寬度顯示，不會被拉伸出多餘留白 */
+.heatmap-section { flex: 1 1 auto; min-width: 0; overflow-x: auto; }
 
-.heatmap-section { overflow-x: auto; }
-
-.detail-panel { display: flex; flex-direction: column; gap: 1rem; }
+.detail-panel { flex: 0 0 560px; max-width: 100%; display: flex; flex-direction: column; gap: 1rem; }
 
 .detail-placeholder {
+  flex: 0 0 560px; max-width: 100%;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  height: 300px; color: #9ca3af; text-align: center; line-height: 1.6;
-  border: 1px dashed var(--color-border, #e5e7eb); border-radius: 0.75rem;
+  height: 320px; color: var(--text-secondary, #a8a29e); text-align: center; line-height: 1.7;
+  background: var(--surface, #fff);
+  border: 1px dashed var(--border, #d6d1c8); border-radius: 12px;
+  font-size: 0.88rem;
 }
-.placeholder-icon { font-size: 2rem; margin-bottom: 0.75rem; }
+.placeholder-icon { font-size: 2.2rem; margin-bottom: 0.85rem; opacity: 0.6; }
 </style>

@@ -117,19 +117,41 @@ export interface MaterialItem {
   pir_percentage: number | null
   bio_based_percentage: number | null
   recyclability_rating: 'high' | 'medium' | 'low' | 'not_rated' | null
+  microfiber_release_risk: 'low' | 'medium' | 'high' | 'not_rated' | null
+  fiber_type: string | null
   created_at: string
 }
 
-export interface MaterialBomSupplier {
+export interface MaterialItemSupplier {
+  id: string
+  material_item_id: string
+  supplier_id: string
+  role: 'primary' | 'alternate'
+  source: 'erp_designated' | 'manual'
+  sort_order: number
+  supplier?: { id: string; name: string; code: string | null; onboarding_stage: string }
+}
+
+export interface MaterialBomLineSupplierOption {
+  bom_line_supplier_id: string
   supplier_id: string
   supplier_name: string
-  bom_count: number
-  latest_emission: {
-    emissions_value: number
-    source: string
-    is_flagged: boolean
-    reported_period: string | null
-  } | null
+  supplier_code: string | null
+  role: 'primary' | 'alternate'
+  emissions_value: number | null
+  source: string | null
+  is_flagged: boolean
+  reported_period: string | null
+}
+
+export interface MaterialBomLineRow {
+  bom_line_id: string
+  sales_product_id: string
+  product_name: string | null
+  product_code: string | null
+  product_model_no: string | null
+  current_primary_supplier_id: string | null
+  suppliers: MaterialBomLineSupplierOption[]
 }
 
 export interface ProductBomLine {
@@ -212,7 +234,24 @@ export const materialItemApi = {
     )
   },
   bomSuppliers: (id: string) =>
-    http.get<{ success: boolean; data: MaterialBomSupplier[] }>(`/api/v1/material-items/${id}/bom-suppliers`),
+    http.get<{ success: boolean; data: MaterialBomLineRow[] }>(`/api/v1/material-items/${id}/bom-suppliers`),
+  switchPrimarySupplier: (materialItemId: string, bomLineId: string, supplierId: string) =>
+    http.post<{ success: boolean; message: string }>(
+      `/api/v1/material-items/${materialItemId}/bom-lines/${bomLineId}/switch-primary-supplier`,
+      { supplier_id: supplierId }
+    ),
+
+  // 物料層級核可供應商清單（主/備），所有使用此物料的產品共用，取代逐產品重複登記
+  approvedSuppliers: (id: string) =>
+    http.get<{ success: boolean; data: MaterialItemSupplier[] }>(`/api/v1/material-items/${id}/suppliers`),
+  addApprovedSupplier: (id: string, payload: { supplier_id: string; role: 'primary' | 'alternate' }) =>
+    http.post<{ success: boolean; data: MaterialItemSupplier; message?: string }>(`/api/v1/material-items/${id}/suppliers`, payload),
+  setApprovedSupplierRole: (id: string, approvedSupplierId: string, role: 'primary' | 'alternate') =>
+    http.patch<{ success: boolean; data: MaterialItemSupplier }>(`/api/v1/material-items/${id}/suppliers/${approvedSupplierId}/role`, { role }),
+  removeApprovedSupplier: (id: string, approvedSupplierId: string) =>
+    http.delete<{ success: boolean; message: string }>(`/api/v1/material-items/${id}/suppliers/${approvedSupplierId}`),
+  applyApprovedSuppliersToBomLine: (id: string, bomLineId: string) =>
+    http.post<{ success: boolean; message: string; data: any }>(`/api/v1/material-items/${id}/suppliers/apply-to-bom-line`, { bom_line_id: bomLineId }),
 }
 
 export const bomLineSupplierApi = {

@@ -43,6 +43,8 @@ class SalesProductController extends Controller
         $cbam = SalesProduct::checkCbamApplicability($validated['hs_code']);
         $validated['is_cbam_applicable'] = $cbam['is_applicable'];
         $validated['cbam_category']      = $cbam['category'];
+        $validated['is_eudr_applicable'] = SalesProduct::checkEudrApplicability($validated['hs_code']);
+        $validated['dpp_category']       = SalesProduct::checkDppCategory($validated['hs_code']);
 
         $product = SalesProduct::create($validated);
 
@@ -89,25 +91,40 @@ class SalesProductController extends Controller
 
     public function update(Request $request, SalesProduct $salesProduct): JsonResponse
     {
+        if ($request->filled('product_code') && $request->input('product_code') !== $salesProduct->product_code) {
+            return response()->json([
+                'success' => false,
+                'message' => '產品編碼（product_code）僅可透過 ERP 同步建立，不可修改',
+            ], 422);
+        }
+
         $validated = $request->validate([
             'name'                    => ['sometimes', 'string', 'max:255'],
-            'product_code'            => ['sometimes', 'nullable', 'string', 'max:100'],
             'model_no'                => ['sometimes', 'nullable', 'string', 'max:100'],
             'hs_code'                 => ['sometimes', 'string', 'max:10'],
             'description'             => ['sometimes', 'nullable', 'string'],
             'unit'                    => ['sometimes', 'nullable', 'string'],
+            'quantity'                => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'unit_price'              => ['sometimes', 'nullable', 'numeric'],
             'currency'                => ['sometimes', 'string', 'size:3'],
             'material_group_id'       => ['sometimes', 'nullable', 'uuid', 'exists:material_groups,id'],
             'customer_id'             => ['sometimes', 'nullable', 'uuid', 'exists:customers,id'],
             'applicable_regulations'  => ['sometimes', 'nullable', 'array'],
             'applicable_regulations.*' => ['string'],
+            'dpp_category'            => ['sometimes', 'nullable', 'string', 'max:30'],
         ]);
+
+        // dpp_category 若在此次請求中被明確指定，視為人工覆寫，優先於 HS Code 自動判定
+        $dppCategoryOverridden = array_key_exists('dpp_category', $validated);
 
         if (isset($validated['hs_code'])) {
             $cbam = SalesProduct::checkCbamApplicability($validated['hs_code']);
             $validated['is_cbam_applicable'] = $cbam['is_applicable'];
             $validated['cbam_category']      = $cbam['category'];
+            $validated['is_eudr_applicable'] = SalesProduct::checkEudrApplicability($validated['hs_code']);
+            if (!$dppCategoryOverridden) {
+                $validated['dpp_category'] = SalesProduct::checkDppCategory($validated['hs_code']);
+            }
         }
 
         $salesProduct->update($validated);
@@ -162,14 +179,15 @@ class SalesProductController extends Controller
     public function addSupplier(Request $request, SalesProduct $salesProduct): JsonResponse
     {
         $validated = $request->validate([
-            'supplier_id'       => ['required', 'uuid', 'exists:suppliers,id'],
-            'material_group_id' => ['nullable', 'uuid', 'exists:material_groups,id'],
-            'notes'             => ['nullable', 'string'],
+            'supplier_id'          => ['required', 'uuid', 'exists:suppliers,id'],
+            'supplier_facility_id' => ['nullable', 'uuid', 'exists:supplier_facilities,id'],
+            'material_group_id'    => ['nullable', 'uuid', 'exists:material_groups,id'],
+            'notes'                => ['nullable', 'string'],
         ]);
 
         $tgs = $salesProduct->tradeGoodSuppliers()->create($validated);
 
-        return response()->json(['success' => true, 'data' => $tgs->load('supplier', 'materialGroup'), 'message' => '上游供應商已新增'], 201);
+        return response()->json(['success' => true, 'data' => $tgs->load('supplier', 'supplierFacility', 'materialGroup'), 'message' => '上游供應商已新增'], 201);
     }
 
     public function removeSupplier(SalesProduct $salesProduct, TradeGoodSupplier $tradeGoodSupplier): JsonResponse

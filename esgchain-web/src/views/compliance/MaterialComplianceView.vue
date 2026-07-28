@@ -226,17 +226,16 @@
             <thead>
               <tr>
                 <th style="padding-left:20px;">產品名稱</th>
-                <th style="width:80px;text-align:center;">ESPR</th>
-                <th style="width:110px;text-align:center;">DPP 狀態</th>
-                <th style="width:180px;">材料完整度</th>
-                <th style="width:180px;">供應商合規率</th>
-                <th style="width:200px;">問題項目</th>
+                <th style="width:120px;text-align:center;">DPP 狀態</th>
+                <th style="width:220px;">材料完整度</th>
+                <th style="width:220px;">供應商合規率</th>
+                <th style="width:260px;">問題項目</th>
                 <th style="width:32px;"></th>
               </tr>
             </thead>
             <tbody>
               <template v-if="dppData.length === 0">
-                <tr><td colspan="7" class="empty-row">無產品資料</td></tr>
+                <tr><td colspan="6" class="empty-row">無產品資料</td></tr>
               </template>
               <tr
                 v-for="p in dppData"
@@ -247,10 +246,6 @@
                 <td style="padding-left:20px;">
                   <div class="supplier-name">{{ p.product_name }}</div>
                   <div style="font-size:11px;color:var(--text-secondary);">{{ p.bom_line_count }} 筆物料明細</div>
-                </td>
-                <td style="text-align:center;">
-                  <span v-if="p.has_espr_regulation" style="color:#16a34a;font-weight:700;">✓</span>
-                  <span v-else style="color:#d1d5db;">—</span>
                 </td>
                 <td style="text-align:center;">
                   <span class="status-pill" :class="dppStatusClass(p.readiness_status)">{{ dppStatusLabel(p.readiness_status) }}</span>

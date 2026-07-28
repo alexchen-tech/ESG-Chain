@@ -139,14 +139,14 @@
             <button :class="['panel-tab', panelTab[g.id] === 'export-links' && 'active']" @click="loadExportLinks(g.id); setTab(g.id, 'export-links')">採購連結</button>
           </div>
 
-          <!-- 供應商面板 -->
+          <!-- 供應商面板（由 BOM 明細＋物料核可供應商清單反推，唯讀；如需調整請至物料管理維護核可清單） -->
           <div v-if="panelTab[g.id] === 'suppliers'">
             <div v-if="suppLoading[g.id]" class="panel-loading">載入中…</div>
             <div v-else>
               <table v-if="suppliers[g.id]?.length" class="panel-table">
-                <thead><tr><th>供應商</th><th>物料群組</th><th>合規狀態</th><th>文件明細</th><th></th></tr></thead>
+                <thead><tr><th>供應商</th><th>物料群組</th><th>合規狀態</th><th>文件明細</th></tr></thead>
                 <tbody>
-                  <tr v-for="s in suppliers[g.id]" :key="s.id">
+                  <tr v-for="s in suppliers[g.id]" :key="s.supplier_id">
                     <td>{{ s.supplier_name }}</td>
                     <td>{{ s.material_group || '—' }}</td>
                     <td><span class="status-dot" :class="`status-dot--${s.status}`"></span> {{ STATUS_LABELS[s.status] }}</td>
@@ -156,28 +156,10 @@
                       </span>
                       <span v-if="!s.doc_statuses.length" class="no-data">無需求文件</span>
                     </td>
-                    <td><button class="action-btn action-btn--danger" @click="removeSupplier(g.id, s.id)">✕</button></td>
                   </tr>
                 </tbody>
               </table>
-              <div v-else class="panel-empty">尚未設定上游供應商</div>
-
-              <!-- 新增供應商 -->
-              <div class="add-supplier-row">
-                <select v-model="addSupplierForm[g.id].supplier_id" class="form-input" style="width:180px;">
-                  <option value="">選擇供應商</option>
-                  <option v-for="s in allSuppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
-                </select>
-                <select v-model="addSupplierForm[g.id].material_group_id" class="form-input" style="width:160px;">
-                  <option value="">物料群組（選填）</option>
-                  <option v-for="mg in materialGroups" :key="mg.id" :value="mg.id">{{ mg.name }}</option>
-                </select>
-                <button
-                  class="btn btn-secondary"
-                  :disabled="!addSupplierForm[g.id]?.supplier_id || addingSupplier[g.id]"
-                  @click="addSupplier(g.id)"
-                >{{ addingSupplier[g.id] ? '新增中…' : '+ 新增' }}</button>
-              </div>
+              <div v-else class="panel-empty">尚無上游供應商資料——BOM 明細的物料尚未套用核可供應商清單</div>
             </div>
           </div>
 
@@ -328,8 +310,7 @@
 
 <script lang="ts">
 import { defineComponent } from 'vue'
-import { tradeGoodApi, marketComplianceApi, type TradeGood, type TradeGoodSupplier, type EmissionReport, type MarketComplianceResult } from '@/api/modules/tradeGoods'
-import { materialGroupApi } from '@/api/modules/compliance'
+import { tradeGoodApi, marketComplianceApi, type TradeGood, type EmissionReport, type MarketComplianceResult } from '@/api/modules/tradeGoods'
 import { customersApi, type Customer } from '@/api/modules/customers'
 
 const STATUS_LABELS: Record<string, string> = {
@@ -362,8 +343,6 @@ export default defineComponent({
       marketComplianceLoading: false,
       expandedCompliance: {} as Record<string, boolean>,
       goods: [] as TradeGood[],
-      allSuppliers: [] as any[],
-      materialGroups: [] as any[],
       allCustomers: [] as Customer[],
       showModal: false,
       editingGood: null as TradeGood | null,
@@ -371,10 +350,8 @@ export default defineComponent({
       form: { name: '', product_code: '', hs_code: '', unit: '', unit_price: null as number | null, currency: 'USD', description: '', customer_id: '' },
       openPanels: {} as Record<string, boolean>,
       panelTab: {} as Record<string, string>,
-      suppliers: {} as Record<string, TradeGoodSupplier[]>,
+      suppliers: {} as Record<string, any[]>,
       suppLoading: {} as Record<string, boolean>,
-      addSupplierForm: {} as Record<string, { supplier_id: string; material_group_id: string }>,
-      addingSupplier: {} as Record<string, boolean>,
       emissions: {} as Record<string, EmissionReport[]>,
       emissionsLoading: {} as Record<string, boolean>,
       confirmingEmission: {} as Record<string, boolean>,
@@ -402,8 +379,6 @@ export default defineComponent({
   },
   async mounted() {
     await this.loadData()
-    this.loadSuppliers()
-    this.loadMaterialGroups()
     this.loadCustomers()
   },
   methods: {
@@ -413,19 +388,6 @@ export default defineComponent({
         const { data } = await tradeGoodApi.list()
         this.goods = data.data
       } finally { this.isLoading = false }
-    },
-    async loadSuppliers() {
-      try {
-        const http = (await import('@/api/http')).default
-        const { data } = await http.get<any>('/api/v1/suppliers?per_page=200')
-        this.allSuppliers = data.data?.data ?? data.data ?? []
-      } catch { /* silent */ }
-    },
-    async loadMaterialGroups() {
-      try {
-        const { data } = await materialGroupApi.list()
-        this.materialGroups = data.data
-      } catch { /* silent */ }
     },
     async loadCustomers() {
       try {
@@ -465,34 +427,10 @@ export default defineComponent({
     async loadSupplierPanel(id: string) {
       if (this.suppLoading[id]) return
       this.suppLoading[id] = true
-      if (!this.addSupplierForm[id]) this.addSupplierForm[id] = { supplier_id: '', material_group_id: '' }
       try {
         const { data } = await tradeGoodApi.suppliers(id)
         this.suppliers[id] = data.data
       } finally { this.suppLoading[id] = false }
-    },
-    async addSupplier(goodId: string) {
-      const f = this.addSupplierForm[goodId]
-      if (!f?.supplier_id) return
-      this.addingSupplier[goodId] = true
-      try {
-        await tradeGoodApi.addSupplier(goodId, { supplier_id: f.supplier_id, material_group_id: f.material_group_id || undefined })
-        f.supplier_id = ''
-        f.material_group_id = ''
-        await this.loadSupplierPanel(goodId)
-        await this.loadData()
-      } catch (e: any) {
-        alert(e?.response?.data?.message ?? '新增失敗')
-      } finally { this.addingSupplier[goodId] = false }
-    },
-    async removeSupplier(goodId: string, suppId: string) {
-      try {
-        await tradeGoodApi.removeSupplier(goodId, suppId)
-        await this.loadSupplierPanel(goodId)
-        await this.loadData()
-      } catch (e: any) {
-        alert(e?.response?.data?.message ?? '移除失敗')
-      }
     },
     async loadEmissions(goodId: string) {
       if (this.emissionsLoading[goodId]) return

@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\BomLineSupplier;
+use App\Models\MaterialItemEmission;
+use App\Models\ProductBomLine;
 use App\Models\RiskAssessment;
 use App\Models\Supplier;
 use App\Models\TradeGood;
@@ -35,7 +38,7 @@ class SupplierReplacementController extends Controller
         $market            = $request->market;
         $replaceSupplierId = $request->replace_supplier_id;
 
-        $tradeGood       = TradeGood::with('suppliers.supplier')->findOrFail($tradeGoodId);
+        $tradeGood       = TradeGood::with('bomLines.bomLineSuppliers')->findOrFail($tradeGoodId);
         $replaceSupplier = Supplier::findOrFail($replaceSupplierId);
 
         // 碳排占比
@@ -48,19 +51,42 @@ class SupplierReplacementController extends Controller
         $replaceRisk  = $this->latestRiskWithDims($replaceSupplierId);
         $replaceAxis1 = $replaceRisk?->axis1_score ?? 80.0;
 
-        $bomSupplierIds = $tradeGood->suppliers->pluck('supplier_id')->toArray();
+        // 上游供應商來源改用 BOM（ProductBomLine → BomLineSupplier），不用 trade_good_suppliers——
+        // 該表在多數商品上未維護，與義務缺口面板、EUDR 徽章先前的資料不一致問題同一根因。
+        $bomSupplierIds = $tradeGood->bomLines
+            ->flatMap(fn ($line) => $line->bomLineSuppliers)
+            ->pluck('supplier_id')->unique()->values()->toArray();
 
-        // 查找候選供應商：同 HS Code、異來源國，且有六維資料
-        $rawCandidates = Supplier::where('country_code', '!=', $replaceSupplier->country_code)
-            ->where('hs_code', $replaceSupplier->hs_code)
+        // 被替換供應商在此商品供應鏈中負責的物料群組（Supplier 無 hs_code 欄位，
+        // 改以「同物料群組的核准供應商」作候選來源，貼合實際 AVL/BOM 資料模型）
+        $materialGroupId = $tradeGood->bomLines
+            ->first(fn ($line) => $line->bomLineSuppliers->contains('supplier_id', $replaceSupplierId))
+            ?->material_group_id;
+
+        $candidateSupplierIds = $materialGroupId
+            ? BomLineSupplier::whereIn('bom_line_id',
+                ProductBomLine::where('material_group_id', $materialGroupId)->pluck('id'))
+                ->pluck('supplier_id')->unique()
+            : collect();
+
+        // 查找候選供應商：同物料群組的核准供應商、異來源國、排除被替換者本身，且有六維資料
+        $rawCandidates = Supplier::whereIn('id', $candidateSupplierIds)
+            ->where('id', '!=', $replaceSupplierId)
+            ->where('country_code', '!=', $replaceSupplier->country_code)
             ->whereHas('riskAssessments', fn ($q) => $q->whereNotNull('dim_e1'))
             ->with(['riskAssessments' => fn ($q) => $q->whereNotNull('dim_e1')->orderByDesc('assessed_at')])
             ->limit(50)
             ->get();
 
+        // 實測物料碳排：取該群組內、此商品 BOM 實際使用的物料，
+        // 供候選評分納入實測碳足跡（而非僅 SAQ 氣候治理分數）
+        $carbonBySupplier = $materialGroupId
+            ? $this->materialCarbonByGroup($tradeGood, $materialGroupId)
+            : [];
+
         // 計算候選分數，套用硬性過濾
         $fallback   = false;
-        $candidates = $this->scoreCandidates($rawCandidates, $fallback);
+        $candidates = $this->scoreCandidates($rawCandidates, $fallback, $carbonBySupplier);
 
         if (empty($candidates)) {
             return response()->json([
@@ -71,7 +97,8 @@ class SupplierReplacementController extends Controller
 
         $aiUrl = config('services.ai.url', env('AI_SERVICE_URL', 'http://esgchain-ai:8000'));
 
-        $resp = Http::timeout(30)->post("{$aiUrl}/ai/v1/path-risk/replacement-candidates", [
+        // AI 端點需 JWT（get_current_user 只驗不發），轉發本次請求的使用者 token
+        $resp = Http::withToken($request->bearerToken())->timeout(30)->post("{$aiUrl}/ai/v1/path-risk/replacement-candidates", [
             'trade_good_id'                 => $tradeGoodId,
             'market'                        => $market,
             'replace_supplier_id'           => $replaceSupplierId,
@@ -94,17 +121,32 @@ class SupplierReplacementController extends Controller
     /**
      * 計算候選廠分數並套用硬性過濾。
      *
-     * 評分：total_score × 0.5 + six_dim_weighted × 0.5
+     * 評分：
+     *   有實測碳排資料時 → total_score × 0.35 + six_dim_weighted × 0.35 + carbon_score × 0.30
+     *   無實測碳排資料時 → total_score × 0.5 + six_dim_weighted × 0.5（原公式，優雅退化）
+     * carbon_score：候選在「被替換供應商所屬物料群組」的實測碳排值，於候選池中的相對百分位
+     *   （碳排越低分數越高，0–100），非 SAQ dim_e2 氣候治理分數的替代，是額外訊號。
      * 硬性過濾：min(dim_e1..e5) ≥ REPLACEMENT_MIN_SCORE
      * 若過濾後候選池為空，退化為純 total_score 排序並設 fallback=true。
      *
+     * @param  array<string, float>  $carbonBySupplier  supplier_id => 該供應商在相關物料群組的平均實測碳排值
      * @return array<int, array<string, mixed>>
      */
-    private function scoreCandidates(\Illuminate\Support\Collection $rawCandidates, bool &$fallback): array
+    private function scoreCandidates(\Illuminate\Support\Collection $rawCandidates, bool &$fallback, array $carbonBySupplier = []): array
     {
         $minScore = SixDimRiskThresholds::REPLACEMENT_MIN_SCORE;
 
-        $scored = $rawCandidates->map(function (Supplier $s) {
+        // 碳排百分位轉換：越低碳排分數越高（0–100）
+        $carbonValues = array_values($carbonBySupplier);
+        $carbonMin    = $carbonValues ? min($carbonValues) : null;
+        $carbonMax    = $carbonValues ? max($carbonValues) : null;
+        $toCarbonScore = function (?float $value) use ($carbonMin, $carbonMax): ?float {
+            if ($value === null || $carbonMin === null || $carbonMax === null) return null;
+            if ($carbonMax === $carbonMin) return 100.0; // 全部候選碳排相同，給滿分不影響排序
+            return round((1 - ($value - $carbonMin) / ($carbonMax - $carbonMin)) * 100, 2);
+        };
+
+        $scored = $rawCandidates->map(function (Supplier $s) use ($carbonBySupplier, $toCarbonScore) {
             $ra = $s->riskAssessments->first();
             if (!$ra) return null;
 
@@ -129,8 +171,14 @@ class SupplierReplacementController extends Controller
                     $weightTotal += $w;
                 }
             }
-            $sixDimScore    = $weightTotal > 0 ? $weightedSum / $weightTotal : $totalScore;
-            $candidateScore = (float) $totalScore * 0.5 + $sixDimScore * 0.5;
+            $sixDimScore = $weightTotal > 0 ? $weightedSum / $weightTotal : $totalScore;
+
+            $co2Kg      = $carbonBySupplier[$s->id] ?? null;
+            $carbonScore = $toCarbonScore($co2Kg);
+
+            $candidateScore = $carbonScore !== null
+                ? (float) $totalScore * 0.35 + $sixDimScore * 0.35 + $carbonScore * 0.30
+                : (float) $totalScore * 0.5 + $sixDimScore * 0.5;
 
             return [
                 'supplier_id'    => $s->id,
@@ -145,7 +193,8 @@ class SupplierReplacementController extends Controller
                 'dim_e3'         => $dims['dim_e3'],
                 'dim_e4'         => $dims['dim_e4'],
                 'dim_e5'         => $dims['dim_e5'],
-                'co2_kg'         => null,
+                'co2_kg'         => $co2Kg,
+                'carbon_score'   => $carbonScore,
             ];
         })->filter()->values();
 
@@ -159,6 +208,32 @@ class SupplierReplacementController extends Controller
         }
 
         return $filtered->sortByDesc('candidate_score')->values()->toArray();
+    }
+
+    /**
+     * 取指定物料群組內、此商品 BOM 實際使用的物料，
+     * 回傳「供應商 → 平均實測碳排值」（含被替換供應商自身，供比較基準）。
+     * 找不到對應物料或無任何實測資料時回傳空陣列（呼叫端優雅退化為純 ESG 評分）。
+     *
+     * @return array<string, float>
+     */
+    private function materialCarbonByGroup(TradeGood $tradeGood, string $materialGroupId): array
+    {
+        $materialIds = ProductBomLine::where('sales_product_id', $tradeGood->id)
+            ->where('material_group_id', $materialGroupId)
+            ->pluck('material_item_id')
+            ->filter()
+            ->unique();
+
+        if ($materialIds->isEmpty()) return [];
+
+        return MaterialItemEmission::whereIn('material_item_id', $materialIds)
+            ->whereNotNull('supplier_id')
+            ->where('is_flagged', false)
+            ->get()
+            ->groupBy('supplier_id')
+            ->map(fn ($group) => round((float) $group->avg('emissions_value'), 4))
+            ->toArray();
     }
 
     private function latestRiskWithDims(string $supplierId): ?RiskAssessment

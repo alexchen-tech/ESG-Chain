@@ -170,23 +170,4 @@ class TradeGoodController extends Controller
 
         return response()->json(['success' => true, 'message' => '已確認採用此碳排數值', 'data' => ['embedded_emissions' => $emission->emissions_value]]);
     }
-
-    public function exportLinks(TradeGood $tradeGood): JsonResponse
-    {
-        $links = $tradeGood->exportLinks()
-            ->with('buyerProduct:id,name,product_code')
-            ->orderBy('created_at')
-            ->get()
-            ->map(fn($l) => [
-                'id'               => $l->id,
-                'erp_product_code' => $l->erp_product_code,
-                'relation_type'    => $l->relation_type,
-                'note'             => $l->note,
-                'buyer_product_id'   => $l->buyer_product_id,
-                'buyer_product_name' => $l->buyerProduct?->name,
-                'buyer_product_sku'  => $l->buyerProduct?->product_code,
-            ]);
-
-        return response()->json(['success' => true, 'data' => $links]);
-    }
 }

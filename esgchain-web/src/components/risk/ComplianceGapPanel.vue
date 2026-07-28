@@ -12,13 +12,18 @@
       <div v-if="obligations.length === 0" class="panel-empty">
         此商品市場組合無義務缺口
       </div>
+      <!-- 直列式：所有義務依序列出，各自一個區段，不需點擊切換 -->
       <div v-else class="obligations-list">
-        <div v-for="ob in obligations" :key="ob.id" class="obligation-row">
+        <div v-for="ob in obligations" :key="ob.id" class="obligation-section">
           <div class="ob-top">
-            <span class="ob-name">{{ ob.regulation_name }}</span>
+            <span class="ob-name">
+              <span class="ob-tab-dot" :class="statusClass(ob.status)"></span>
+              {{ ob.regulation_name }}
+              <span v-if="ob.is_mandatory" class="ob-mandatory" title="強制文件">必要</span>
+            </span>
             <span class="ob-status-chip" :class="statusClass(ob.status)">{{ statusLabel(ob.status) }}</span>
           </div>
-          <div class="ob-doc-type text-muted">{{ ob.doc_type_label ?? ob.doc_type }}</div>
+          <div class="ob-doc-type text-muted font-mono">{{ ob.doc_type }}</div>
 
           <!-- 責任供應商清單 -->
           <div class="suppliers-list" v-if="ob.responsible_suppliers?.length">
@@ -37,11 +42,14 @@
               </button>
               <button
                 class="btn-replace"
+                :disabled="!sup.has_replacement_candidates"
+                :title="sup.has_replacement_candidates ? '' : '同物料群組內查無其他核准供應商'"
                 @click="requestReplacement(sup)">
-                換供應商
+                替代供應商
               </button>
             </div>
           </div>
+          <div v-else class="ob-no-suppliers text-muted">此為產品層級義務，無特定負責供應商</div>
         </div>
       </div>
     </template>
@@ -93,7 +101,7 @@ export default {
       this.loading = true
       this.error = null
       try {
-        const resp = await api.get(`/trade-goods/${this.tradeGoodId}/compliance-gap`, {
+        const resp = await api.get(`/api/v1/trade-goods/${this.tradeGoodId}/compliance-gap`, {
           params: { market: this.market },
         })
         this.obligations = resp.data.obligations ?? []
@@ -111,17 +119,16 @@ export default {
     async createCap(supplier, obligation) {
       const key = supplier.id + obligation.doc_type
       this.creatingCap = key
+      const docLabel = obligation.doc_type_label ?? obligation.doc_type
       try {
-        await api.post('/cap', {
-          supplier_id:  supplier.id,
-          source_type:  'compliance_doc_gap',
-          doc_type:     obligation.doc_type,
-          market:       this.market,
-          trade_good_id: this.tradeGoodId,
-          regulation:   obligation.regulation_name,
+        const { data } = await api.post('/api/v1/caps', {
+          supplier_id: supplier.id,
+          source_type: 'compliance_doc',
+          title: `補件：${docLabel}（${this.market} 市場）`,
+          description: `${this.tradeGoodName || '—'} 出口至 ${this.market} 市場，缺少「${docLabel}」（${obligation.doc_type}）。供應商：${supplier.name}。`,
+          priority: obligation.is_mandatory ? 'high' : 'medium',
         })
-        this.$emit('create-cap', { supplierId: supplier.id, docType: obligation.doc_type })
-        alert(`已為 ${supplier.name} 建立「${obligation.doc_type_label ?? obligation.doc_type}」補件 CAP`)
+        this.$emit('create-cap', { supplierId: supplier.id, docType: obligation.doc_type, capId: data.data.id, capTitle: data.data.title })
       } catch {
         alert('建立 CAP 失敗，請稍後再試')
       } finally {
@@ -138,68 +145,91 @@ export default {
 
 <style scoped>
 .gap-panel {
-  border: 1px solid var(--color-border, #e5e7eb);
-  border-radius: 0.75rem;
+  border: 1px solid var(--border, #e2ddd6);
+  border-radius: 12px;
   overflow: hidden;
+  background: var(--surface, #fff);
+  box-shadow: 0 1px 2px rgba(28,25,23,0.04);
 }
 .panel-header {
   background: var(--accent, #1a4d3e);
   color: white;
-  padding: 0.75rem 1rem;
+  padding: 1.1rem 1.35rem;
 }
-.panel-title { font-weight: 600; font-size: 0.9rem; }
-.panel-meta  { font-size: 0.75rem; opacity: 0.8; margin-top: 0.125rem; }
+.panel-title { font-weight: 700; font-size: 1.05rem; letter-spacing: 0.01em; }
+.panel-meta  { font-size: 0.82rem; opacity: 0.75; margin-top: 0.25rem; }
 .panel-loading, .panel-error, .panel-empty {
-  padding: 1.5rem; text-align: center; color: #9ca3af; font-size: 0.85rem;
+  padding: 2.5rem 1.5rem; text-align: center; color: var(--text-secondary, #a8a29e); font-size: 0.9rem; line-height: 1.6;
 }
-.panel-error { color: #ef4444; }
+.panel-error { color: #c0392b; }
 
-.obligations-list { padding: 0.75rem; display: flex; flex-direction: column; gap: 0.75rem; }
+.obligations-list { display: flex; flex-direction: column; }
 
-.obligation-row {
-  border: 1px solid var(--color-border, #f3f4f6);
-  border-radius: 0.5rem;
-  padding: 0.75rem;
+.obligation-section {
+  padding: 1.15rem 1.35rem;
+  border-bottom: 1px solid var(--border, #f0ede6);
+  transition: background 0.12s;
 }
-.ob-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem; }
-.ob-name { font-weight: 600; font-size: 0.85rem; }
-.ob-doc-type { font-size: 0.75rem; margin-bottom: 0.5rem; }
-.text-muted { color: #9ca3af; }
+.obligation-section:last-child { border-bottom: none; }
+.obligation-section:hover { background: var(--surface-2, #faf9f6); }
 
-.ob-status-chip { font-size: 0.68rem; padding: 2px 8px; border-radius: 9999px; font-weight: 500; }
-.status-valid     { background: #d1fae5; color: #065f46; }
-.status-expiring  { background: #fef9c3; color: #a16207; }
-.status-missing   { background: #fee2e2; color: #b91c1c; }
+.ob-tab-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.ob-tab-dot.status-valid     { background: #3f8a56; }
+.ob-tab-dot.status-expiring  { background: #c6a13a; }
+.ob-tab-dot.status-missing   { background: #d0524d; }
 
-.suppliers-list { display: flex; flex-direction: column; gap: 0.375rem; }
+.ob-no-suppliers { font-size: 0.85rem; padding: 0.4rem 0 0; }
+.ob-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.35rem; gap: 0.75rem; }
+.ob-name { font-weight: 700; font-size: 0.98rem; color: var(--text-primary, #1c1917); display: flex; align-items: center; gap: 0.5rem; }
+.ob-mandatory {
+  font-size: 0.65rem; font-weight: 600; color: #9f2a26; background: #f6cbc9;
+  padding: 2px 7px; border-radius: 9999px; letter-spacing: 0.02em;
+}
+.ob-doc-type { font-size: 0.74rem; margin-bottom: 0.85rem; letter-spacing: 0.02em; }
+.text-muted { color: var(--text-secondary, #a8a29e); }
+
+.ob-status-chip { font-size: 0.74rem; padding: 3px 11px; border-radius: 9999px; font-weight: 600; flex-shrink: 0; }
+.status-valid     { background: #dcf1dc; color: #276b3a; }
+.status-expiring  { background: #f5e7b8; color: #8a6d10; }
+.status-missing   { background: #f6cbc9; color: #9f2a26; }
+
+.suppliers-list { display: flex; flex-direction: column; gap: 0.5rem; }
 .supplier-row {
-  display: flex; align-items: center; gap: 0.5rem;
-  padding: 0.375rem 0.5rem;
-  background: #f9fafb; border-radius: 0.375rem;
+  display: flex; align-items: center; gap: 0.65rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--surface-2, #f7f5f1);
+  border: 1px solid var(--border, #efece5);
+  border-radius: 8px;
+  transition: border-color 0.12s;
 }
-.sup-name { flex: 1; font-size: 0.8rem; }
+.supplier-row:hover { border-color: var(--border, #ddd7cc); }
+.sup-name { flex: 1; font-size: 0.87rem; color: var(--text-primary, #1c1917); }
 
-.axis-chip { font-size: 0.68rem; padding: 2px 8px; border-radius: 9999px; font-weight: 500; white-space: nowrap; }
-.axis-extreme { background: #fee2e2; color: #b91c1c; }
-.axis-high    { background: #ffedd5; color: #c2410c; }
-.axis-medium  { background: #fef9c3; color: #a16207; }
-.axis-low     { background: #dcfce7; color: #15803d; }
-.axis-very-low{ background: #f0fdf4; color: #166534; }
+.axis-chip { font-size: 0.72rem; padding: 3px 10px; border-radius: 9999px; font-weight: 600; white-space: nowrap; }
+.axis-extreme { background: #f6cbc9; color: #9f2a26; }
+.axis-high    { background: #f8dcc0; color: #a15417; }
+.axis-medium  { background: #f5e7b8; color: #8a6d10; }
+.axis-low     { background: #cdeace; color: #276b3a; }
+.axis-very-low{ background: #dcf1dc; color: #2f7a42; }
 
 .btn-create-cap {
-  font-size: 0.75rem; padding: 3px 10px;
+  font-size: 0.78rem; font-weight: 600; padding: 6px 13px;
   background: var(--accent, #1a4d3e); color: white;
-  border: none; border-radius: 0.375rem; cursor: pointer;
-  white-space: nowrap;
+  border: none; border-radius: 6px; cursor: pointer;
+  white-space: nowrap; transition: background 0.12s, box-shadow 0.12s;
 }
-.btn-create-cap:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn-create-cap:hover:not(:disabled) { opacity: 0.85; }
+.btn-create-cap:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-create-cap:hover:not(:disabled) { background: var(--accent-hover, #154033); box-shadow: 0 2px 6px rgba(26,77,62,0.25); }
 
 .btn-replace {
-  font-size: 0.72rem; padding: 3px 8px;
-  background: white; color: var(--accent, #1a4d3e);
-  border: 1px solid var(--accent, #1a4d3e); border-radius: 0.375rem; cursor: pointer;
-  white-space: nowrap;
+  font-size: 0.78rem; font-weight: 600; padding: 6px 11px;
+  background: var(--surface, white); color: var(--accent, #1a4d3e);
+  border: 1px solid var(--accent, #1a4d3e); border-radius: 6px; cursor: pointer;
+  white-space: nowrap; transition: background 0.12s;
 }
-.btn-replace:hover { background: #f0fdf4; }
+.btn-replace:hover:not(:disabled) { background: rgba(26,77,62,0.07); }
+.btn-replace:disabled {
+  color: var(--text-secondary, #a8a29e); border-color: var(--border, #ddd7cc);
+  cursor: not-allowed; opacity: 0.6;
+}
 </style>

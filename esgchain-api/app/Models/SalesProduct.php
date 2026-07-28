@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class SalesProduct extends Model
@@ -18,7 +19,7 @@ class SalesProduct extends Model
     protected $fillable = [
         'name', 'product_code', 'model_no', 'hs_code', 'description', 'unit',
         'quantity', 'unit_price', 'currency', 'is_cbam_applicable',
-        'is_eudr_applicable', 'cbam_category', 'embedded_emissions',
+        'is_eudr_applicable', 'cbam_category', 'dpp_category', 'embedded_emissions',
         'emissions_source', 'emissions_updated_at', 'material_group_id',
         'customer_id', 'applicable_regulations', 'inferred_regulations',
     ];
@@ -49,6 +50,38 @@ class SalesProduct extends Model
         return ['is_applicable' => $category !== null, 'category' => $category];
     }
 
+    /**
+     * EUDR（歐盟禁伐林法規）Annex I 規範商品之 HS 前綴對照：牛、可可、咖啡、
+     * 棕櫚油、橡膠、大豆、木材／木製品。
+     */
+    public static function checkEudrApplicability(string $hsCode): bool
+    {
+        $prefix = substr($hsCode, 0, 2);
+        $eudrPrefixes = ['01', '02', '41', '18', '09', '15', '40', '12', '44', '47', '48'];
+        return in_array($prefix, $eudrPrefixes, true);
+    }
+
+    /**
+     * DPP（歐盟數位產品護照）類別判定，跟 cbam_category（CBAM 六類）是兩套
+     * 不同的分類體系，不可混用。目前只實作電池（HS 8507 系列：鉛酸/鎳氫鎳鎘/
+     * 鋰離子/其他蓄電池），其餘類別留 null，待未來擴充時再擴充對照表。
+     * 回傳值可被使用者人工覆寫，覆寫後不會被本方法的後續呼叫覆蓋回去
+     * （呼叫端只在 HS Code 變更時才重新判定，見 SalesProductController）。
+     */
+    public static function checkDppCategory(string $hsCode): ?string
+    {
+        $prefix4 = substr($hsCode, 0, 4);
+        if ($prefix4 === '8507') {
+            return 'battery';
+        }
+        return null;
+    }
+
+    public function batterySpec(): HasOne
+    {
+        return $this->hasOne(ProductBatterySpec::class);
+    }
+
     public function materialGroup(): BelongsTo
     {
         return $this->belongsTo(MaterialGroup::class);
@@ -74,14 +107,14 @@ class SalesProduct extends Model
         return $this->hasMany(ProductBomLine::class, 'sales_product_id');
     }
 
+    public function packaging(): HasOne
+    {
+        return $this->hasOne(ProductPackaging::class);
+    }
+
     public function productionBatches(): HasMany
     {
         return $this->hasMany(ProductionBatch::class, 'sales_product_id')->orderByDesc('production_date');
-    }
-
-    public function shipmentLines(): HasMany
-    {
-        return $this->hasMany(ShipmentLine::class, 'sales_product_id');
     }
 
     public function pcfSnapshots(): HasMany
@@ -92,6 +125,16 @@ class SalesProduct extends Model
     public function latestPcfSnapshot(): ?PcfSnapshot
     {
         return $this->pcfSnapshots()->first();
+    }
+
+    public function circularitySnapshots(): HasMany
+    {
+        return $this->hasMany(ProductCircularitySnapshot::class, 'sales_product_id')->orderByDesc('calculated_at');
+    }
+
+    public function latestCircularitySnapshot(): ?ProductCircularitySnapshot
+    {
+        return $this->circularitySnapshots()->first();
     }
 
     public function complianceDocs(): HasMany

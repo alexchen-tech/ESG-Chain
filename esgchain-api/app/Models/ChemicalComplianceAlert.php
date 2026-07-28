@@ -11,7 +11,7 @@ class ChemicalComplianceAlert extends Model
     use HasUuids;
 
     protected $fillable = [
-        'buyer_product_id', 'material_item_id', 'material_item_chemical_id',
+        'sales_product_id', 'material_item_id', 'material_item_chemical_id',
         'chemical_id', 'regulated_list', 'alert_level', 'status',
         'notes', 'acknowledged_at', 'acknowledged_by',
     ];
@@ -25,9 +25,9 @@ class ChemicalComplianceAlert extends Model
         return $this->belongsTo(MaterialItem::class);
     }
 
-    public function buyerProduct(): BelongsTo
+    public function salesProduct(): BelongsTo
     {
-        return $this->belongsTo(BuyerProduct::class);
+        return $this->belongsTo(SalesProduct::class);
     }
 
     public function chemical(): BelongsTo

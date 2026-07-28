@@ -1,45 +1,47 @@
 <template>
-  <div class="replacement-panel">
-    <div class="panel-header">
+  <div class="drawer-overlay" @click="$emit('close')"></div>
+  <div class="drawer">
+    <div class="drawer-header">
       <div>
-        <div class="panel-title">替換供應商推薦</div>
-        <div class="panel-meta">替換：{{ supplierName }}</div>
+        <span class="drawer-title">替代供應商</span>
+        <div class="drawer-subtitle">換供應商對象：{{ supplierName }}</div>
       </div>
-      <button class="close-btn" @click="$emit('close')">✕</button>
+      <button class="drawer-close" @click="$emit('close')">×</button>
     </div>
 
     <div class="disclaimer">
-      以下候選名單依 ESG 揭露風險改善幅度排序，僅供決策參考，實際採購請依採購流程執行。
+      推薦僅基於 ESG 風險評估，不含交期、價格、產能等商業因素。實際換源需透過 ERP 採購流程執行。
     </div>
 
-    <div v-if="loading" class="panel-loading">計算推薦候選中...</div>
-    <div v-else-if="error" class="panel-error">{{ error }}</div>
-    <div v-else-if="candidates.length === 0" class="panel-empty">未找到符合條件的替換候選</div>
+    <div v-if="loading" class="drawer-body">
+      <div class="skeleton-row" v-for="i in 3" :key="i"></div>
+    </div>
+    <div v-else-if="error" class="drawer-empty">{{ error }}</div>
+    <div v-else-if="candidates.length === 0" class="drawer-empty">
+      系統內無符合條件的替換候選。可透過 ERP 引入新供應商後，完成 SAQ 評估即可出現於此清單。
+    </div>
 
-    <div v-else class="candidates-list">
+    <div v-else class="drawer-body">
       <div v-for="c in candidates" :key="c.supplier_id"
         class="candidate-row"
         :class="{ 'already-in-chain': c.already_in_supply_chain }"
         @click="openDetail(c.supplier_id)">
 
-        <div class="candidate-left">
+        <div class="candidate-info">
           <div class="candidate-name">
-            {{ c.supplier_name }}
+            {{ c.name }}
+            <span class="country-badge">{{ countryFlag(c.country_code) }} {{ c.country_code }}</span>
             <span v-if="c.already_in_supply_chain" class="in-chain-badge">已在供應鏈</span>
-          </div>
-          <div class="candidate-meta">
-            <span class="country-flag">{{ countryFlag(c.country_code) }}</span>
-            <span class="country-code">{{ c.country_code }}</span>
           </div>
         </div>
 
         <div class="candidate-right">
-          <span class="esg-chip" :class="axisClass(c.esg_level)">
-            ESG: {{ LEVEL_LABEL[c.esg_level] ?? c.esg_level ?? '—' }}
+          <span class="esg-chip" :class="axisClass(scoreToLevel(c.axis1_score))">
+            ESG: {{ LEVEL_LABEL[scoreToLevel(c.axis1_score)] ?? '—' }}
           </span>
-          <span v-if="c.improvement_pct != null" class="improve-pct">
-            ↓{{ c.improvement_pct.toFixed(1) }}%
-          </span>
+          <div v-if="c.improvement_pct != null" class="improve-pct">
+            碳排 ↓{{ Number(c.improvement_pct).toFixed(1) }}%
+          </div>
         </div>
       </div>
     </div>
@@ -63,6 +65,7 @@ export default {
     supplierId:   { type: String, required: true },
     supplierName: { type: String, default: '' },
     tradeGoodId:  { type: String, required: true },
+    market:       { type: String, required: true },
   },
 
   data() {
@@ -83,11 +86,13 @@ export default {
       this.loading = true
       this.error = null
       try {
-        const resp = await api.post('/supplier-replacement/candidates', {
-          supplier_id:  this.supplierId,
-          trade_good_id: this.tradeGoodId,
+        const resp = await api.post('/api/v1/supplier-replacement/candidates', {
+          trade_good_id:       this.tradeGoodId,
+          market:              this.market,
+          replace_supplier_id: this.supplierId,
         })
         this.candidates = resp.data.candidates ?? []
+        if (resp.data.message && this.candidates.length === 0) this.error = resp.data.message
       } catch {
         this.error = '無法載入替換推薦候選'
       } finally {
@@ -96,6 +101,16 @@ export default {
     },
 
     axisClass(level) { return AXIS_CLASS[level] ?? '' },
+
+    // axis1_score（ESG 揭露風險分數，越高越好）轉五級，與義務缺口面板一致
+    scoreToLevel(score) {
+      if (score == null) return null
+      if (score >= 80) return 'very_low'
+      if (score >= 60) return 'low'
+      if (score >= 40) return 'medium'
+      if (score >= 20) return 'high'
+      return 'extreme'
+    },
 
     countryFlag(code) {
       const flags = {
@@ -114,66 +129,82 @@ export default {
 </script>
 
 <style scoped>
-.replacement-panel {
-  border: 1px solid var(--color-border, #e5e7eb);
-  border-radius: 0.75rem;
-  overflow: hidden;
+/* 與 MaterialComplianceView 的下鑽側欄一致的抽屜樣式 */
+.drawer-overlay {
+  position: fixed; inset: 0; background: rgba(28,25,23,0.32); z-index: 100;
 }
-
-.panel-header {
+.drawer {
+  position: fixed; top: 0; right: 0; width: 420px; max-width: 100vw; height: 100vh;
+  background: var(--surface, #fff); border-left: 1px solid var(--border, #e2ddd6);
+  z-index: 101; display: flex; flex-direction: column; box-shadow: -8px 0 32px rgba(28,25,23,0.14);
+}
+.drawer-header {
   display: flex; align-items: flex-start; justify-content: space-between;
-  background: #1e3a5f; color: white; padding: 0.75rem 1rem;
+  padding: 1.1rem 1.35rem;
+  background: var(--accent, #1a4d3e); color: white;
 }
-.panel-title { font-weight: 600; font-size: 0.9rem; }
-.panel-meta  { font-size: 0.75rem; opacity: 0.8; margin-top: 0.125rem; }
-.close-btn {
-  background: none; border: none; color: white; opacity: 0.7;
-  cursor: pointer; font-size: 1rem; padding: 0; flex-shrink: 0;
+.drawer-title { font-size: 1.05rem; font-weight: 700; letter-spacing: 0.01em; }
+.drawer-subtitle { font-size: 0.82rem; opacity: 0.75; margin-top: 0.25rem; }
+.drawer-close {
+  background: none; border: none; font-size: 1.15rem; cursor: pointer;
+  color: white; opacity: 0.75; line-height: 1; padding: 0 4px; transition: opacity 0.12s;
 }
-.close-btn:hover { opacity: 1; }
+.drawer-close:hover { opacity: 1; }
 
 .disclaimer {
-  font-size: 0.72rem; color: #6b7280; background: #fffbeb;
-  padding: 0.5rem 1rem; border-bottom: 1px solid #fef3c7;
+  font-size: 0.78rem; color: var(--text-secondary, #78716c); background: var(--surface-2, #f7f5f1);
+  padding: 0.65rem 1.35rem; border-bottom: 1px solid var(--border, #e2ddd6); line-height: 1.5;
 }
 
-.panel-loading, .panel-error, .panel-empty {
-  padding: 1.5rem; text-align: center; color: #9ca3af; font-size: 0.85rem;
+.drawer-body { flex: 1; overflow-y: auto; padding: 0.6rem 0; }
+.drawer-empty {
+  padding: 2.5rem 1.35rem; text-align: center; color: var(--text-secondary, #a8a29e);
+  font-size: 0.88rem; line-height: 1.6;
 }
-.panel-error { color: #ef4444; }
 
-.candidates-list { padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.skeleton-row {
+  height: 52px; margin: 8px 20px; border-radius: 8px;
+  background: linear-gradient(90deg, var(--surface-2, #f0ede6) 25%, var(--border, #e2ddd6) 37%, var(--surface-2, #f0ede6) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+}
+@keyframes skeleton-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
 
 .candidate-row {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--color-border, #f3f4f6);
-  border-radius: 0.5rem;
-  cursor: pointer;
-  transition: background 0.1s;
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin: 0.4rem 0.85rem; padding: 0.7rem 0.85rem;
+  border: 1px solid var(--border, #efece5); border-radius: 8px; gap: 10px;
+  cursor: pointer; transition: border-color 0.12s, background 0.12s;
 }
-.candidate-row:hover { background: #f9fafb; }
-.already-in-chain { background: #f0fdf4; border-color: #bbf7d0; }
+.candidate-row:hover { background: var(--surface-2, #faf9f6); border-color: var(--border, #ddd7cc); }
+.already-in-chain { background: #f2f8f3; border-color: #cdeace; }
 
-.candidate-left { flex: 1; }
-.candidate-name { font-weight: 500; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; }
+.candidate-info { flex: 1; min-width: 0; }
+.candidate-name { font-size: 0.88rem; font-weight: 700; color: var(--text-primary, #1c1917); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.country-badge {
+  font-size: 0.7rem; font-weight: 500; color: var(--text-secondary, #78716c);
+  background: var(--surface-2, #f0ede6); border: 1px solid var(--border, #e2ddd6);
+  padding: 1px 6px; border-radius: 4px; white-space: nowrap;
+}
 .in-chain-badge {
-  font-size: 0.65rem; background: #dcfce7; color: #15803d;
-  padding: 1px 6px; border-radius: 9999px;
+  font-size: 0.65rem; background: #dcf1dc; color: #276b3a;
+  padding: 1px 7px; border-radius: 10px; font-weight: 600;
 }
-.candidate-meta { display: flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; color: #6b7280; margin-top: 0.125rem; }
 
-.candidate-right { display: flex; align-items: center; gap: 0.5rem; }
+.candidate-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
 
-.esg-chip { font-size: 0.68rem; padding: 2px 8px; border-radius: 9999px; font-weight: 500; white-space: nowrap; }
-.axis-extreme { background: #fee2e2; color: #b91c1c; }
-.axis-high    { background: #ffedd5; color: #c2410c; }
-.axis-medium  { background: #fef9c3; color: #a16207; }
-.axis-low     { background: #dcfce7; color: #15803d; }
-.axis-very-low{ background: #f0fdf4; color: #166534; }
+.esg-chip { font-size: 0.72rem; padding: 3px 10px; border-radius: 99px; font-weight: 600; white-space: nowrap; }
+.axis-extreme { background: #f6cbc9; color: #9f2a26; }
+.axis-high    { background: #f8dcc0; color: #a15417; }
+.axis-medium  { background: #f5e7b8; color: #8a6d10; }
+.axis-low     { background: #cdeace; color: #276b3a; }
+.axis-very-low{ background: #dcf1dc; color: #2f7a42; }
 
 .improve-pct {
-  font-size: 0.8rem; font-weight: 700; color: #15803d;
-  font-family: monospace; white-space: nowrap;
+  font-size: 0.76rem; font-weight: 700; color: #2f7a42;
+  font-family: var(--font-mono, 'Fira Code', monospace); white-space: nowrap;
 }
 </style>

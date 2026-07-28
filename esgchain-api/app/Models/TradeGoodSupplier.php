@@ -11,7 +11,7 @@ class TradeGoodSupplier extends Model
     use HasUuids;
 
     protected $fillable = [
-        'trade_good_id', 'supplier_id', 'material_group_id', 'notes',
+        'trade_good_id', 'supplier_id', 'supplier_facility_id', 'material_group_id', 'notes',
     ];
 
     public function tradeGood(): BelongsTo
@@ -22,6 +22,11 @@ class TradeGoodSupplier extends Model
     public function supplier(): BelongsTo
     {
         return $this->belongsTo(Supplier::class);
+    }
+
+    public function supplierFacility(): BelongsTo
+    {
+        return $this->belongsTo(SupplierFacility::class);
     }
 
     public function materialGroup(): BelongsTo
