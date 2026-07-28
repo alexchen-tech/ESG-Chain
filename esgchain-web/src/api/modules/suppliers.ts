@@ -133,7 +133,7 @@ export interface SupplierFacility {
   name: string
   country: string | null
   address: string | null
-  facility_type: 'manufacturing' | 'warehouse' | 'office' | 'other'
+  facility_type: 'manufacturing' | 'warehouse' | 'office' | 'other' | 'weaving' | 'knitting' | 'dyeing' | 'printing' | 'wet_processing' | 'garment_assembly'
   energy_types: string[] | null
   main_products: string | null
   is_active: boolean

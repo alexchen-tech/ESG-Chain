@@ -14,7 +14,7 @@
         </div>
       </div>
       <div v-if="supplier" style="display:flex;gap:8px;align-items:center;">
-        <span class="badge" :class="statusBadgeClass(supplier.status)">{{ statusLabel(supplier.status) }}</span>
+        <span class="badge" :class="erpStatusBadgeClass(supplier.status)" title="ERP 匯入狀態，唯讀">{{ erpStatusLabel(supplier.status) }}</span>
         <template v-if="!isEditing">
           <button class="btn btn-secondary btn-sm" @click="openTransitionModal">變更狀態</button>
           <button class="btn btn-primary btn-sm" @click="enterEditMode">編輯</button>
@@ -54,42 +54,32 @@
             <div class="detail-grid">
               <div class="detail-item">
                 <span class="detail-label">名稱</span>
-                <input v-if="isEditing" v-model="editForm.name" class="form-input" />
-                <span v-else class="detail-value">{{ supplier.name }}</span>
+                <span class="detail-value">{{ supplier.name }}</span>
+                <span v-if="isEditing" style="display:block;font-size:11px;color:var(--text-secondary);">僅可透過 ERP 同步建立，不可修改</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">代碼</span>
-                <input v-if="isEditing" v-model="editForm.code" class="form-input font-mono" />
-                <span v-else class="detail-value font-mono">{{ supplier.code || '—' }}</span>
+                <span class="detail-value font-mono">{{ supplier.code || '—' }}</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">國家/地區碼</span>
-                <CountrySelect v-if="isEditing" v-model="editForm.country_code" />
-                <span v-else class="detail-value">{{ supplier.country_code || '—' }}</span>
+                <span class="detail-value">{{ supplier.country_code || '—' }}</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">供應商層級</span>
-                <select v-if="isEditing" v-model.number="editForm.tier" class="form-select" style="width:100px;">
-                  <option :value="1">Tier 1</option>
-                  <option :value="2">Tier 2</option>
-                  <option :value="3">Tier 3</option>
-                </select>
-                <span v-else class="detail-value">Tier {{ supplier.tier }}</span>
+                <span class="detail-value">Tier {{ supplier.tier }}</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">統編 / VAT</span>
-                <input v-if="isEditing" v-model="editForm.vat_number" class="form-input font-mono" placeholder="稅籍號碼" />
-                <span v-else class="detail-value font-mono">{{ supplier.vat_number || '—' }}</span>
+                <span class="detail-value font-mono">{{ supplier.vat_number || '—' }}</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">ERP 廠商代碼</span>
-                <input v-if="isEditing" v-model="editForm.erp_vendor_codes" class="form-input font-mono" placeholder="多組以逗號分隔" />
-                <span v-else class="detail-value font-mono">{{ supplier.erp_vendor_codes || '—' }}</span>
+                <span class="detail-value font-mono">{{ supplier.erp_vendor_codes || '—' }}</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">年採購金額（USD）</span>
-                <input v-if="isEditing" v-model.number="editForm.spend_amount" class="form-input font-mono" type="number" min="0" placeholder="0" />
-                <span v-else class="detail-value font-mono">{{ supplier.spend_amount != null ? Number(supplier.spend_amount).toLocaleString() : '—' }}</span>
+                <span class="detail-value font-mono">{{ supplier.spend_amount != null ? Number(supplier.spend_amount).toLocaleString() : '—' }}</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">建立時間</span>
@@ -99,8 +89,7 @@
               <!-- 產業分類 -->
               <div class="detail-item">
                 <span class="detail-label">產業</span>
-                <input v-if="isEditing" v-model="editForm.industry" class="form-input" placeholder="如：鋼鐵製造" />
-                <span v-else class="detail-value">{{ supplier.industry || '—' }}</span>
+                <span class="detail-value">{{ supplier.industry || '—' }}</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">ESG 產業分類</span>
@@ -141,8 +130,8 @@
               <div class="detail-item">
                 <span class="detail-label">活躍狀態</span>
                 <span>
-                  <span class="badge" :class="onboardingBadgeClass(supplier.onboarding_stage)">
-                    {{ onboardingLabel(supplier.onboarding_stage) }}
+                  <span class="badge" :class="statusBadgeClass(supplier.onboarding_stage)">
+                    {{ statusLabel(supplier.onboarding_stage) }}
                   </span>
                 </span>
               </div>
@@ -522,18 +511,39 @@
         <!-- ══════════════════════════════════════════════════ -->
         <div v-show="activeInfoTab === 'facility'" class="tab-panel-wrap">
 
+          <!-- 廠區 -->
+          <div class="detail-section">
+            <div class="section-subtitle-row">
+              <span class="section-subtitle">廠區（製程/地點）</span>
+              <button class="btn btn-secondary btn-xs" @click="openAddFacilityModal">＋ 新增廠區</button>
+            </div>
+            <div v-if="facilitiesLoading" class="empty-inline">載入中…</div>
+            <div v-else-if="!facilities.length" class="empty-inline">尚無廠區資料</div>
+            <div v-else class="contact-list">
+              <div v-for="f in facilities" :key="f.id" class="contact-row">
+                <div class="contact-info">
+                  <span class="contact-name">{{ f.name }}</span>
+                  <span class="contact-meta">{{ FACILITY_TYPE_LABELS[f.facility_type] ?? f.facility_type }}</span>
+                  <span v-if="f.country" class="contact-meta">{{ f.country }}</span>
+                </div>
+                <div class="contact-actions">
+                  <span v-if="!f.is_active" class="badge badge-gray">已停用</span>
+                  <button class="icon-btn" title="編輯" @click="openEditFacilityModal(f)">✎</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- 地址 / 網站 + 聯絡人 -->
           <div class="detail-section">
             <div class="detail-grid" style="margin-bottom:16px;">
               <div class="detail-item">
                 <span class="detail-label">地址</span>
-                <textarea v-if="isEditing" v-model="editForm.address" class="form-textarea" rows="2" placeholder="公司地址" />
-                <span v-else class="detail-value">{{ supplier.address || '—' }}</span>
+                <span class="detail-value">{{ supplier.address || '—' }}</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">網站</span>
-                <input v-if="isEditing" v-model="editForm.website" class="form-input" placeholder="https://" type="url" />
-                <a v-else-if="supplier.website" :href="supplier.website" target="_blank" class="detail-link">{{ supplier.website }}</a>
+                <a v-if="supplier.website" :href="supplier.website" target="_blank" class="detail-link">{{ supplier.website }}</a>
                 <span v-else class="detail-value">—</span>
               </div>
             </div>
@@ -564,12 +574,12 @@
             <div v-if="!supplier.status_histories?.length" class="empty-inline">尚無狀態變更記錄</div>
             <div v-else class="timeline">
               <div v-for="h in supplier.status_histories" :key="h.id" class="timeline-item">
-                <div class="timeline-dot" :class="statusBadgeClass(h.to_status)" />
+                <div class="timeline-dot" :class="historyBadgeClass(h, h.to_status)" />
                 <div class="timeline-content">
                   <div class="timeline-title">
-                    <span class="badge" :class="statusBadgeClass(h.from_status)">{{ statusLabel(h.from_status) }}</span>
-                    <span class="timeline-arrow">→</span>
-                    <span class="badge" :class="statusBadgeClass(h.to_status)">{{ statusLabel(h.to_status) }}</span>
+                    <span v-if="h.from_status" class="badge" :class="historyBadgeClass(h, h.from_status)">{{ historyLabel(h, h.from_status) }}</span>
+                    <span v-if="h.from_status" class="timeline-arrow">→</span>
+                    <span class="badge" :class="historyBadgeClass(h, h.to_status)">{{ historyLabel(h, h.to_status) }}</span>
                   </div>
                   <div v-if="h.reason" class="timeline-reason">{{ h.reason }}</div>
                   <div class="timeline-time">{{ formatDateTime(h.created_at) }}</div>
@@ -582,6 +592,53 @@
 
       </div><!-- /detail-main -->
     </div><!-- /detail-layout -->
+
+    <!-- 新增/編輯廠區 Modal -->
+    <div v-if="showFacilityModal" class="modal-overlay" @click.self="showFacilityModal=false">
+      <div class="modal" style="min-width:360px;">
+        <div class="modal-header">
+          <span class="modal-title">{{ facilityForm.id ? '編輯廠區' : '新增廠區' }}</span>
+          <button class="modal-close" @click="showFacilityModal=false">×</button>
+        </div>
+        <div class="form-group">
+          <label class="form-label">廠區名稱 <span style="color:#ef4444;">*</span></label>
+          <input v-model="facilityForm.name" class="form-input" placeholder="如：越南染整廠" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">製程類型</label>
+          <select v-model="facilityForm.facility_type" class="form-select">
+            <option value="manufacturing">一般製造</option>
+            <option value="weaving">織布</option>
+            <option value="knitting">針織</option>
+            <option value="dyeing">染整</option>
+            <option value="printing">印花</option>
+            <option value="wet_processing">濕製程</option>
+            <option value="garment_assembly">成衣製造</option>
+            <option value="warehouse">倉儲</option>
+            <option value="office">辦公室</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">國家（ISO 2 碼）</label>
+          <input v-model="facilityForm.country" class="form-input" placeholder="VN" maxlength="2" style="text-transform:uppercase;" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">地址</label>
+          <textarea v-model="facilityForm.address" class="form-textarea" rows="2" placeholder="廠區地址" />
+        </div>
+        <div v-if="facilityForm.id" class="form-group" style="display:flex;align-items:center;gap:8px;">
+          <input id="facility-active" v-model="facilityForm.is_active" type="checkbox" />
+          <label for="facility-active" class="form-label" style="margin:0;cursor:pointer;">啟用中</label>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="showFacilityModal=false">取消</button>
+          <button class="btn btn-primary" :disabled="facilitySaving || !facilityForm.name.trim()" @click="saveFacility">
+            {{ facilitySaving ? '儲存中...' : '儲存' }}
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- 新增聯絡人 Modal -->
     <div v-if="showContactModal" class="modal-overlay" @click.self="showContactModal=false">
@@ -665,7 +722,8 @@ ChartJS.register(
   RadialLinearScale, PointElement, LineElement, Filler,
   Title, Tooltip, Legend
 )
-import { suppliersApi, type Supplier } from '@/api/modules/suppliers'
+import { suppliersApi, type Supplier, facilityApi, type SupplierFacility } from '@/api/modules/suppliers'
+import { DISCLOSURE_PREFIX_LABELS } from '@/constants/disclosureDomains'
 import { questionnaireApi, type Questionnaire } from '@/api/modules/questionnaire'
 import { riskApi } from '@/api/modules/risk'
 import { settingsApi, type SasbIndustry, type SupplierGroup } from '@/api/modules/settings'
@@ -680,7 +738,7 @@ const INFO_TABS = [
   { key: 'risk',      label: '風險歷史' },
   { key: 'sustain',   label: '永續績效' },
   { key: 'comply',    label: '合規管理' },
-  { key: 'facility',  label: '聯絡資訊' },
+  { key: 'facility',  label: '聯絡/廠區資訊' },
 ]
 
 const AXIS_DEFS = {
@@ -700,6 +758,13 @@ const LEVEL_ZH: Record<string, string> = {
 }
 
 const STATUS_LABELS: Record<string, string> = { active: '啟用', suspended: '暫停', terminated: '終止' }
+// ERP 擁有的 status 欄位（依匯入資料決定，僅 active/inactive 兩種），與上面 onboarding_stage 的 3 種值語彙分開，避免混用
+const ERP_STATUS_LABELS: Record<string, string> = { active: '生效', inactive: '停用' }
+const ERP_STATUS_BADGE_CLASS: Record<string, string> = { active: 'badge-green', inactive: 'badge-gray' }
+const FACILITY_TYPE_LABELS: Record<string, string> = {
+  manufacturing: '一般製造', weaving: '織布', knitting: '針織', dyeing: '染整', printing: '印花',
+  wet_processing: '濕製程', garment_assembly: '成衣製造', warehouse: '倉儲', office: '辦公室', other: '其他',
+}
 const Q_STATUS_LABELS: Record<string, string> = {
   not_started: '未開始', in_progress: '填寫中', submitted: '已提交',
   under_review: '審核中', review_returned: '已退回', completed: '已通過', reviewed: '已複核',
@@ -734,14 +799,11 @@ export default defineComponent({
 
       // Edit mode
       isEditing: false,
+      // 僅 ESG-Chain 自有分類欄位可編輯，其餘供應商資料一律唯讀、保留從 ERP 匯入的值
       editForm: {
-        name: '', code: '' as string | null, country_code: '' as string | null,
-        tier: 1, industry: '' as string | null, industry_group: '' as string | null,
-        sasb_industry_id: '' as string | null, group_id: '' as string | null,
-        address: '' as string | null, website: '' as string | null,
-        vat_number: '' as string | null,
-        erp_vendor_codes: '' as string | null,
-        spend_amount: null as number | null,
+        industry_group: '' as string | null,
+        sasb_industry_id: '' as string | null,
+        group_id: '' as string | null,
       },
 
       // 輔助資料（SASB + 分組）
@@ -754,6 +816,21 @@ export default defineComponent({
       showContactModal: false,
       contactForm: { name: '', title: '', email: '', phone: '', is_primary: false },
       contactSaving: false,
+
+      // 廠區
+      facilities: [] as SupplierFacility[],
+      facilitiesLoading: false,
+      showFacilityModal: false,
+      facilityForm: {
+        id: '' as string,
+        name: '',
+        facility_type: 'manufacturing' as SupplierFacility['facility_type'],
+        country: '',
+        address: '',
+        is_active: true,
+      },
+      facilitySaving: false,
+      FACILITY_TYPE_LABELS,
 
       // 合規文件
       complianceDocs: [] as any[],
@@ -797,20 +874,15 @@ export default defineComponent({
       return entries.sort((a, b) => a.slug.localeCompare(b.slug) || a.period_year - b.period_year)
     },
     disclosureGroups(): Array<{ prefix: string; label: string; entries: any[] }> {
-      const PREFIX_LABELS: Record<string, string> = {
-        energy: '能源', water: '用水', waste: '廢棄物', ghg: '溫室氣體',
-        emission: '排放', biodiversity: '生物多樣性', social: '社會',
-        labor: '勞工', safety: '安全衛生', governance: '治理',
-      }
       const groups: Record<string, any[]> = {}
       for (const entry of this.disclosureEntries) {
-        const prefix = entry.slug.split('_')[0]
+        const prefix = entry.slug.split('.')[0]
         if (!groups[prefix]) groups[prefix] = []
         groups[prefix].push(entry)
       }
       return Object.entries(groups).map(([prefix, entries]) => ({
         prefix,
-        label: PREFIX_LABELS[prefix] ?? prefix,
+        label: DISCLOSURE_PREFIX_LABELS[prefix] ?? prefix,
         entries,
       }))
     },
@@ -1274,6 +1346,7 @@ export default defineComponent({
         if (docRes.status === 'fulfilled') this.complianceDocs = (docRes.value.data as any).data ?? []
         if (bomRes.status === 'fulfilled') this.bomRequirements = (bomRes.value.data as any).data ?? []
         this.loadRiskHistory(id)
+        this.loadFacilities()
       } finally { this.isLoading = false }
     },
 
@@ -1290,19 +1363,9 @@ export default defineComponent({
     async enterEditMode() {
       if (!this.supplier) return
       this.editForm = {
-        name: this.supplier.name,
-        code: this.supplier.code,
-        country_code: this.supplier.country_code,
-        tier: this.supplier.tier,
-        industry: this.supplier.industry,
         industry_group: this.supplier.industry_group ?? '',
         sasb_industry_id: this.supplier.sasb_industry_id,
         group_id: this.supplier.group_id,
-        address: this.supplier.address,
-        website: this.supplier.website,
-        vat_number: this.supplier.vat_number,
-        erp_vendor_codes: this.supplier.erp_vendor_codes,
-        spend_amount: this.supplier.spend_amount,
       }
       this.isEditing = true
       if (!this.auxLoaded) {
@@ -1328,25 +1391,63 @@ export default defineComponent({
       this.isSubmitting = true
       try {
         await suppliersApi.update(this.supplier.id, {
-          name: this.editForm.name,
-          code: this.editForm.code,
-          country_code: this.editForm.country_code,
-          tier: this.editForm.tier,
-          industry: this.editForm.industry,
           industry_group: this.editForm.industry_group || null,
           sasb_industry_id: this.editForm.sasb_industry_id || null,
           group_id: this.editForm.group_id || null,
-          address: this.editForm.address,
-          website: this.editForm.website,
-          vat_number: this.editForm.vat_number,
-          erp_vendor_codes: this.editForm.erp_vendor_codes,
-          spend_amount: this.editForm.spend_amount,
         })
         this.isEditing = false
         await this.loadData()
       } catch (e: any) {
         alert(e?.response?.data?.message ?? '儲存失敗，請稍後再試')
       } finally { this.isSubmitting = false }
+    },
+
+    // ── 廠區管理 ──
+    async loadFacilities() {
+      if (!this.supplier) return
+      this.facilitiesLoading = true
+      try {
+        const { data } = await facilityApi.list(this.supplier.id)
+        this.facilities = data.data
+      } catch { /* silent */ }
+      finally { this.facilitiesLoading = false }
+    },
+    openAddFacilityModal() {
+      this.facilityForm = { id: '', name: '', facility_type: 'manufacturing', country: '', address: '', is_active: true }
+      this.showFacilityModal = true
+    },
+    openEditFacilityModal(f: SupplierFacility) {
+      this.facilityForm = {
+        id: f.id,
+        name: f.name,
+        facility_type: f.facility_type,
+        country: f.country ?? '',
+        address: f.address ?? '',
+        is_active: f.is_active,
+      }
+      this.showFacilityModal = true
+    },
+    async saveFacility() {
+      if (!this.supplier || !this.facilityForm.name.trim()) return
+      this.facilitySaving = true
+      try {
+        const payload = {
+          name: this.facilityForm.name,
+          facility_type: this.facilityForm.facility_type,
+          country: this.facilityForm.country || null,
+          address: this.facilityForm.address || null,
+          is_active: this.facilityForm.is_active,
+        }
+        if (this.facilityForm.id) {
+          await facilityApi.update(this.supplier.id, this.facilityForm.id, payload)
+        } else {
+          await facilityApi.create(this.supplier.id, payload)
+        }
+        this.showFacilityModal = false
+        await this.loadFacilities()
+      } catch (e: any) {
+        alert(e?.response?.data?.message ?? '儲存失敗')
+      } finally { this.facilitySaving = false }
     },
 
     // ── 聯絡人管理 ──
@@ -1416,8 +1517,15 @@ export default defineComponent({
     formatDateTime: (s: string) => s ? new Date(s).toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short' }) : '—',
     statusLabel: (s: string) => STATUS_LABELS[s] ?? s,
     statusBadgeClass: (s: string) => ({ active: 'badge-green', suspended: 'badge-yellow', terminated: 'badge-red' }[s] ?? 'badge-gray'),
-    onboardingLabel: (s: string | null) => ({ certified: '認證完成', reviewing: '審核中', invited: '已邀請', potential: '潛在廠商', suspended: '暫停', terminated: '終止' }[s ?? ''] ?? s ?? '—'),
-    onboardingBadgeClass: (s: string | null) => ({ certified: 'badge-green', reviewing: 'badge-blue', invited: 'badge-purple', potential: 'badge-gray', suspended: 'badge-yellow', terminated: 'badge-red' }[s ?? ''] ?? 'badge-gray'),
+    erpStatusLabel: (s: string | null) => (s == null ? '—' : ERP_STATUS_LABELS[s] ?? s),
+    erpStatusBadgeClass: (s: string | null) => (s == null ? 'badge-gray' : ERP_STATUS_BADGE_CLASS[s] ?? 'badge-gray'),
+    // 狀態歷程時間軸：erp_status 型別用 生效/停用 語彙，onboarding 型別維持既有 啟用/暫停/終止 語彙
+    historyLabel(h: { type?: string }, status: string | null) {
+      return h.type === 'erp_status' ? this.erpStatusLabel(status) : this.statusLabel(status as string)
+    },
+    historyBadgeClass(h: { type?: string }, status: string | null) {
+      return h.type === 'erp_status' ? this.erpStatusBadgeClass(status) : this.statusBadgeClass(status as string)
+    },
     dimLabel: (d: string) => DIM_LABELS[d] ?? d,
     levelBadgeClass: (l?: string) => ({ very_low: 'badge-green', low: 'badge-green', medium: 'badge-yellow', high: 'badge-red', extreme: 'badge-red' }[l ?? ''] ?? 'badge-gray'),
     qStatusLabel: (s: string) => Q_STATUS_LABELS[s] ?? s,
@@ -1541,123 +1649,9 @@ export default defineComponent({
 .detail-layout { display: flex; flex-direction: column; gap: 0; }
 .detail-main { display: flex; flex-direction: column; gap: 0; }
 
-/* ── Tabs ── */
-.detail-tabs {
-  display: flex;
-  background: var(--surface);
-  border-radius: 10px 10px 0 0;
-  border: 1px solid var(--border);
-  border-bottom: none;
-  overflow: hidden;
-  gap: 0;
-}
-
-.detail-tab {
-  padding: 12px 24px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  color: #a8a29e;
-  border-bottom: 3px solid transparent;
-  transition: all 0.15s;
-  white-space: nowrap;
-  position: relative;
-}
-.detail-tab:hover { color: var(--text-primary); background: #faf9f7; }
-.detail-tab.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-  font-weight: 700;
-  background: #f4faf8;
-}
-
-/* Tab 內容容器 */
-.tab-panel-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  border-top: 1px solid var(--border);
-}
-
-/* ── Section ── */
-.detail-section {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-top: none;
-  border-radius: 0;
-  padding: 24px 28px;
-  margin-bottom: 0;
-}
-.detail-section:last-child {
-  border-radius: 0 0 10px 10px;
-  margin-bottom: 20px;
-}
-.detail-section:first-child { border-top: none; }
-
-.section-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin-bottom: 20px;
-  padding-left: 10px;
-  border-left: 3px solid var(--accent);
-  line-height: 1.3;
-}
-
-.section-subtitle {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-secondary);
-  letter-spacing: 0.03em;
-  margin-bottom: 10px;
-  margin-top: 4px;
-}
-
-/* ── Detail Grid ── */
-.detail-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0;
-}
-
-@media (max-width: 640px) {
-  .detail-grid { grid-template-columns: 1fr; }
-}
-
-.detail-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 13px 16px 13px 0;
-  border-bottom: 1px solid #f0ede6;
-}
-.detail-item:nth-child(odd) {
-  padding-right: 32px;
-  border-right: 1px solid #f0ede6;
-}
-.detail-item:nth-child(even) {
-  padding-left: 32px;
-  padding-right: 0;
-}
-/* 最後兩個 item 無下邊框 */
-.detail-grid .detail-item:nth-last-child(-n+2) { border-bottom: none; }
-
-.detail-label {
-  font-size: 11.5px;
-  color: var(--text-secondary);
-  font-weight: 500;
-  letter-spacing: 0.01em;
-}
-.detail-value {
-  font-size: 14px;
-  color: var(--text-primary);
-  line-height: 1.5;
-  font-weight: 600;
-}
-.detail-link { font-size: 14px; color: var(--accent); text-decoration: none; }
-.detail-link:hover { text-decoration: underline; }
+/* Tabs / Section / Detail Grid 樣式已移至 components.css 共用（.detail-tabs/.detail-tab/
+   .tab-panel-wrap/.detail-section/.section-title/.detail-grid/.detail-item/.detail-label/
+   .detail-value/.detail-link），供應商/物料/銷售產品三個詳情頁統一套用同一套，不再各自維護 */
 
 /* 頁頭 meta chips */
 .supplier-meta-chips { display: flex; align-items: center; gap: 6px; margin-top: 5px; flex-wrap: wrap; }
@@ -1743,13 +1737,6 @@ export default defineComponent({
 .btn-xs { padding: 3px 10px; font-size: 12px; }
 
 /* ── 合規文件 ── */
-.section-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-.section-title-row .section-title { margin-bottom: 0; }
 .doc-type-badge { font-size: 11px; font-weight: 600; background: #f0f4ff; color: #3730a3; border: 1px solid #c7d2fe; padding: 2px 7px; border-radius: 4px; font-family: 'Fira Code', monospace; letter-spacing: 0.02em; }
 
 /* 供應材料清單 table 欄位 */

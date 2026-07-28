@@ -38,7 +38,7 @@
         <!-- Tab 導覽 -->
         <div class="detail-tabs">
           <button
-            v-for="t in TABS" :key="t.key"
+            v-for="t in visibleTabs" :key="t.key"
             class="detail-tab"
             :class="{ active: activeTab === t.key }"
             @click="switchTab(t.key)"
@@ -55,8 +55,8 @@
             </div>
             <div class="detail-item">
               <span class="detail-label">SKU 品號</span>
-              <input v-if="isEditing" v-model="editForm.product_code" class="form-input font-mono" />
-              <span v-else class="detail-value font-mono">{{ product.product_code || '—' }}</span>
+              <span class="detail-value font-mono">{{ product.product_code || '—' }}</span>
+              <span v-if="isEditing" style="display:block;font-size:11px;color:var(--text-secondary);">僅可透過 ERP 同步建立，不可修改</span>
             </div>
             <div class="detail-item">
               <span class="detail-label">型號</span>
@@ -104,11 +104,11 @@
           </div>
 
           <!-- 內含碳排量摘要 -->
-          <div class="info-card" style="margin-top:20px;">
-            <div class="info-card-title">內含碳排量</div>
+          <div class="stat-highlight" style="margin-top:20px;">
+            <div class="stat-highlight-title">內含碳排量</div>
             <div style="display:flex;align-items:baseline;gap:10px;margin-top:8px;">
               <template v-if="product.embedded_emissions != null">
-                <span class="font-mono" style="font-size:22px;font-weight:700;">{{ product.embedded_emissions.toFixed(4) }}</span>
+                <span class="stat-highlight-value">{{ product.embedded_emissions.toFixed(4) }}</span>
                 <span style="font-size:13px;color:var(--text-secondary);">kgCO₂e/u</span>
                 <span class="tag" :class="`esb-${product.emissions_source}`" style="margin-left:4px;">
                   {{ { pcf_sync: 'PCF 同步', supplier_reported: '供應商回報', manual: '手動輸入' }[product.emissions_source ?? ''] ?? product.emissions_source }}
@@ -120,37 +120,182 @@
               更新於 {{ product.emissions_updated_at.slice(0, 16) }}
             </div>
           </div>
+
+          <!-- 包材資訊 -->
+          <div class="section-title" style="margin-top:20px;display:flex;align-items:center;justify-content:space-between;">
+            <span>包材資訊</span>
+            <button v-if="!packagingEditing" class="btn btn-secondary btn-xs" @click="openPackagingEdit">
+              {{ packaging ? '編輯' : '＋ 填寫包材資訊' }}
+            </button>
+          </div>
+          <div v-if="!packagingEditing" class="detail-grid" style="grid-template-columns:repeat(4,1fr);">
+            <div class="detail-item">
+              <span class="detail-label">再生料比例</span>
+              <span class="detail-value font-mono">{{ packaging?.recycled_content_ratio != null ? packaging.recycled_content_ratio + '%' : '—' }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">可回收</span>
+              <span class="detail-value">{{ packaging?.recyclable == null ? '—' : (packaging.recyclable ? '是' : '否') }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">可重複使用</span>
+              <span class="detail-value">{{ packaging?.reusable == null ? '—' : (packaging.reusable ? '是' : '否') }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">包材說明</span>
+              <span class="detail-value">{{ packaging?.material_description || '—' }}</span>
+            </div>
+          </div>
+          <div v-else class="detail-grid" style="grid-template-columns:repeat(4,1fr);">
+            <div class="detail-item">
+              <span class="detail-label">再生料比例（%）</span>
+              <input v-model.number="packagingForm.recycled_content_ratio" class="form-input font-mono" type="number" min="0" max="100" step="0.01" />
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">可回收</span>
+              <select v-model="packagingForm.recyclable" class="form-select">
+                <option :value="null">未設定</option>
+                <option :value="true">是</option>
+                <option :value="false">否</option>
+              </select>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">可重複使用</span>
+              <select v-model="packagingForm.reusable" class="form-select">
+                <option :value="null">未設定</option>
+                <option :value="true">是</option>
+                <option :value="false">否</option>
+              </select>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">包材說明</span>
+              <input v-model="packagingForm.material_description" class="form-input" placeholder="如：再生紙箱" />
+            </div>
+            <div style="grid-column:1/-1;display:flex;gap:8px;">
+              <button class="btn btn-secondary btn-sm" @click="packagingEditing = false">取消</button>
+              <button class="btn btn-primary btn-sm" :disabled="packagingSaving" @click="savePackaging">
+                {{ packagingSaving ? '儲存中…' : '儲存' }}
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- ══ 法規適用 ══ -->
         <div v-show="activeTab === 'regulations'" class="detail-section tab-panel">
-          <div class="reg-grid">
-            <div class="reg-card" :class="product.is_cbam_applicable ? 'reg-card--active' : 'reg-card--inactive'">
-              <div class="reg-card-name">CBAM</div>
-              <div class="reg-card-status">{{ product.is_cbam_applicable ? '適用' : '不適用' }}</div>
-              <div v-if="product.cbam_category" class="reg-card-detail">類別：{{ product.cbam_category }}</div>
-            </div>
-            <div class="reg-card" :class="product.is_eudr_applicable ? 'reg-card--active' : 'reg-card--inactive'">
-              <div class="reg-card-name">EUDR</div>
-              <div class="reg-card-status">{{ product.is_eudr_applicable ? '適用' : '不適用' }}</div>
-            </div>
-          </div>
-
-          <div class="detail-section-head" style="margin-top:24px;">適用法規清單</div>
+          <div class="detail-section-head">適用法規清單</div>
+          <p class="section-hint">人工確認後的正式適用法規，供出口審查與合規檢核採用</p>
           <div v-if="product.applicable_regulations?.length" class="reg-tags">
-            <span v-for="r in product.applicable_regulations" :key="r" class="tag tag-reg">{{ r }}</span>
+            <span v-for="r in product.applicable_regulations" :key="r" class="tag tag-reg tag-removable">
+              {{ r }}
+              <button class="tag-remove" :disabled="regSaving" title="移除" @click="removeApplicableReg(r)">×</button>
+            </span>
           </div>
-          <p v-else class="empty-hint">尚無明確適用法規</p>
+          <p v-else class="empty-hint">尚無明確適用法規，可從下方 AI 推算法規採用</p>
 
           <div class="detail-section-head" style="margin-top:20px;">AI 推算法規</div>
-          <div v-if="product.inferred_regulations?.length" class="reg-tags">
-            <span v-for="r in product.inferred_regulations" :key="r" class="tag tag-inferred">{{ r }}</span>
+          <p class="section-hint">系統依 BOM 物料群組自動推算，採用後才會列入正式適用法規清單</p>
+          <div v-if="unadoptedInferredRegs.length || adoptedInferredRegs.length" class="reg-tags">
+            <span v-for="r in unadoptedInferredRegs" :key="r" class="tag tag-inferred tag-adoptable">
+              {{ r }}
+              <button class="tag-adopt" :disabled="regSaving" title="採用" @click="adoptRegulation(r)">＋ 採用</button>
+            </span>
+            <span v-for="r in adoptedInferredRegs" :key="r" class="tag tag-inferred tag-adopted" title="已採用至適用法規清單">
+              ✓ {{ r }}
+            </span>
           </div>
           <p v-else class="empty-hint">尚無 AI 推算結果</p>
 
-          <div style="margin-top:16px;">
+          <div style="margin-top:16px;display:flex;gap:8px;">
             <button class="btn btn-secondary" :disabled="syncingReg" @click="syncRegulations">
               {{ syncingReg ? '推算中…' : '🔄 重新推算法規' }}
+            </button>
+            <button v-if="unadoptedInferredRegs.length" class="btn btn-secondary" :disabled="regSaving" @click="adoptAllRegulations">
+              {{ regSaving ? '採用中…' : `採用全部建議（${unadoptedInferredRegs.length}）` }}
+            </button>
+          </div>
+        </div>
+
+        <!-- ══ 電池規格（dpp_category = battery 專用） ══ -->
+        <div v-show="activeTab === 'battery'" class="detail-section tab-panel">
+          <div class="detail-section-head">電池類別與化學系統</div>
+          <p class="section-hint">依 EU 電池法規 (EU) 2023/1542 DPP 最小揭露欄位，人工填報</p>
+          <div class="detail-grid" style="grid-template-columns:repeat(3,1fr);">
+            <div class="detail-item">
+              <span class="detail-label">電池類別</span>
+              <select v-model="batteryForm.battery_category" class="form-select">
+                <option :value="null">未設定</option>
+                <option value="portable">可攜式</option>
+                <option value="industrial">工業用</option>
+                <option value="ev">電動車</option>
+                <option value="lmt">LMT 輕型載具</option>
+              </select>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">化學系統</span>
+              <input v-model="batteryForm.chemistry" class="form-input" placeholder="如 Li-ion NMC / LFP / 鉛酸" />
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">重量（kg）</span>
+              <input v-model.number="batteryForm.weight_kg" class="form-input font-mono" type="number" min="0" step="0.001" />
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">額定容量（Ah）</span>
+              <input v-model.number="batteryForm.rated_capacity_ah" class="form-input font-mono" type="number" min="0" step="0.001" />
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">額定電壓（V）</span>
+              <input v-model.number="batteryForm.rated_voltage_v" class="form-input font-mono" type="number" min="0" step="0.01" />
+            </div>
+          </div>
+
+          <div class="detail-section-head" style="margin-top:20px;">關鍵原料回收含量（%）</div>
+          <p class="section-hint">EU 電池法規指定金屬，與紡織品泛用再生料比例是不同的欄位</p>
+          <div class="detail-grid" style="grid-template-columns:repeat(4,1fr);">
+            <div class="detail-item">
+              <span class="detail-label">鋰</span>
+              <input v-model.number="batteryForm.lithium_recycled_content_ratio" class="form-input font-mono" type="number" min="0" max="100" step="0.01" />
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">鈷</span>
+              <input v-model.number="batteryForm.cobalt_recycled_content_ratio" class="form-input font-mono" type="number" min="0" max="100" step="0.01" />
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">鎳</span>
+              <input v-model.number="batteryForm.nickel_recycled_content_ratio" class="form-input font-mono" type="number" min="0" max="100" step="0.01" />
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">鉛</span>
+              <input v-model.number="batteryForm.lead_recycled_content_ratio" class="form-input font-mono" type="number" min="0" max="100" step="0.01" />
+            </div>
+          </div>
+
+          <div class="detail-section-head" style="margin-top:20px;">效能與耐久性</div>
+          <div class="detail-grid" style="grid-template-columns:repeat(3,1fr);">
+            <div class="detail-item">
+              <span class="detail-label">循環壽命（次）</span>
+              <input v-model.number="batteryForm.cycle_life" class="form-input font-mono" type="number" min="0" />
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">預期使用年限（年）</span>
+              <input v-model.number="batteryForm.expected_lifetime_years" class="form-input font-mono" type="number" min="0" />
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">放電效率（%）</span>
+              <input v-model.number="batteryForm.discharge_efficiency_ratio" class="form-input font-mono" type="number" min="0" max="100" step="0.01" />
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">操作溫度範圍</span>
+              <input v-model="batteryForm.operating_temp_range" class="form-input" placeholder="如 -20°C ~ 60°C" />
+            </div>
+            <div class="detail-item" style="grid-column:1/-1;">
+              <span class="detail-label">初始容量 / SoH 說明</span>
+              <input v-model="batteryForm.initial_capacity_soh_note" class="form-input" placeholder="初始容量與健康狀態（SoH）量測方法說明" />
+            </div>
+          </div>
+
+          <div style="margin-top:16px;">
+            <button class="btn btn-primary btn-sm" :disabled="batterySpecSaving" @click="saveBatterySpec">
+              {{ batterySpecSaving ? '儲存中…' : '儲存電池規格' }}
             </button>
           </div>
         </div>
@@ -166,7 +311,6 @@
                   <th>HS Code</th>
                   <th>類型</th>
                   <th>數量</th>
-                  <th>供應商</th>
                   <th>子產品</th>
                   <th></th>
                 </tr>
@@ -184,32 +328,6 @@
                   </td>
                   <td class="font-mono">{{ bl.quantity ?? '—' }}</td>
                   <td>
-                    <template v-if="bl.primary_supplier">
-                      <div class="bom-sup-row">
-                        {{ bl.primary_supplier.name }}
-                        <span class="tier-badge font-mono">T{{ bl.primary_supplier.tier }}</span>
-                        <span
-                          v-if="supplierCompliance(bl.primary_supplier.id)"
-                          class="status-dot"
-                          :class="`status-dot--${supplierCompliance(bl.primary_supplier.id).status}`"
-                          :title="STATUS_LABELS[supplierCompliance(bl.primary_supplier.id).status] ?? ''"
-                        ></span>
-                      </div>
-                      <div v-if="supplierCompliance(bl.primary_supplier.id)?.doc_statuses?.length" class="bom-sup-docs">
-                        <span
-                          v-for="d in supplierCompliance(bl.primary_supplier.id).doc_statuses" :key="d.doc_type"
-                          class="doc-chip" :class="`doc-chip--${d.status}`"
-                          :title="DOC_STATUS_LABELS[d.status] ?? d.status"
-                        >
-                          {{ DOC_TYPE_LABELS[d.doc_type] ?? d.doc_type }}
-                          <span class="doc-status-dot" :class="`doc-dot--${d.status}`"></span>
-                          <span v-if="d.expires_at" class="doc-exp">{{ d.expires_at }}</span>
-                        </span>
-                      </div>
-                    </template>
-                    <span v-else class="no-data">—</span>
-                  </td>
-                  <td>
                     <span v-if="bl.child_sales_product_id" class="font-mono" style="font-size:11px;">
                       {{ bl.child_sales_product?.product_code || bl.child_sales_product_id?.slice(0, 8) }}…
                     </span>
@@ -224,6 +342,38 @@
             <p v-else class="empty-hint">尚無 BOM 明細</p>
 
             <p class="erp-note">BOM 結構由 ERP 同步匯入（不可手動新增）；如涉商業機密，可刪除個別列。</p>
+
+            <!-- 上游供應商彙總（由 BOM 明細＋物料核可供應商清單反推，唯讀；於「物料管理」維護核可清單） -->
+            <div class="detail-section-head" style="margin-top:24px;">上游供應商彙總</div>
+            <p class="section-hint">依 BOM 明細與物料核可供應商清單自動反推，唯讀；如需新增/調整核可供應商，請至「物料管理」對應物料頁面維護</p>
+            <table v-if="upstreamDetails.length" class="data-table">
+              <thead>
+                <tr>
+                  <th>供應商</th>
+                  <th>物料群組</th>
+                  <th>製程廠區</th>
+                  <th>合規狀態</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="s in upstreamDetails" :key="s.supplier_id">
+                  <td>{{ s.supplier_name }}</td>
+                  <td>{{ s.material_group || '—' }}</td>
+                  <td>
+                    <template v-if="s.supplier_facility_name">
+                      {{ s.supplier_facility_name }}
+                      <span class="tag tag-gray" style="margin-left:4px;">{{ FACILITY_TYPE_LABELS[s.facility_type ?? ''] ?? s.facility_type }}</span>
+                    </template>
+                    <span v-else class="no-data">—</span>
+                  </td>
+                  <td>
+                    <span class="status-dot" :class="`status-dot--${s.status}`" :title="STATUS_LABELS[s.status] ?? s.status"></span>
+                    {{ STATUS_LABELS[s.status] ?? s.status }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p v-else class="empty-hint">尚無上游供應商資料——BOM 明細的物料尚未套用核可供應商清單</p>
           </div>
         </div>
 
@@ -242,7 +392,9 @@
             </thead>
             <tbody>
               <tr v-for="b in productionBatches" :key="b.id">
-                <td class="font-mono">{{ b.erp_batch_no }}</td>
+                <td class="font-mono">
+                  <router-link :to="`/compliance/production-batches/${b.id}`" style="color:var(--accent);text-decoration:none;">{{ b.erp_batch_no }}</router-link>
+                </td>
                 <td class="font-mono" style="font-size:11px;color:var(--text-secondary);">{{ b.erp_order_no || '—' }}</td>
                 <td class="font-mono">{{ b.production_date || '—' }}</td>
                 <td class="font-mono" style="text-align:right;">{{ b.quantity != null ? Number(b.quantity).toLocaleString() : '—' }} {{ b.unit }}</td>
@@ -299,6 +451,67 @@
             <div style="margin-top:16px;">
               <button class="btn btn-secondary" :disabled="recalcLoading" @click="recalcPcf">
                 {{ recalcLoading ? '計算中…' : '🔄 重新計算 PCF' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ══ 循環經濟 ══ -->
+        <div v-show="activeTab === 'circularity'" class="detail-section tab-panel">
+          <div v-if="circularityLoading" class="loading-hint">載入中…</div>
+          <div v-else>
+            <div v-if="circularitySnapshot" class="pcf-summary">
+              <div class="pcf-meta" style="margin-bottom:16px;">
+                <span class="tag" :class="circularitySnapshot.data_ready ? 'tag-ok' : 'tag-warn'">
+                  {{ circularitySnapshot.data_ready ? '資料完整' : `${circularitySnapshot.incomplete_lines_count} 筆物料缺重量資料` }}
+                </span>
+                <span class="font-mono" style="font-size:11px;color:var(--text-secondary);">
+                  計算時間：{{ circularitySnapshot.calculated_at?.slice(0, 16) }}
+                </span>
+              </div>
+
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+                <div class="pcf-total">
+                  <span class="pcf-label">回收材料比（PCR+PIR）</span>
+                  <span class="pcf-val font-mono">{{ circularitySnapshot.recycled_content_ratio != null ? (circularitySnapshot.recycled_content_ratio * 100).toFixed(1) + '%' : '—' }}</span>
+                </div>
+                <div class="pcf-total">
+                  <span class="pcf-label">生物基比例</span>
+                  <span class="pcf-val font-mono">{{ circularitySnapshot.bio_based_ratio != null ? (circularitySnapshot.bio_based_ratio * 100).toFixed(1) + '%' : '—' }}</span>
+                </div>
+                <div class="pcf-total">
+                  <span class="pcf-label">總重量</span>
+                  <span class="pcf-val font-mono">{{ circularitySnapshot.total_weight_kg != null ? circularitySnapshot.total_weight_kg.toFixed(3) + ' kg' : '—' }}</span>
+                </div>
+              </div>
+
+              <div v-if="circularitySnapshot.composition_breakdown?.length" style="margin-top:20px;">
+                <div class="detail-section-head">成分佔比</div>
+                <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
+                  <div v-for="item in circularitySnapshot.composition_breakdown" :key="item.fiber_type" style="display:flex;align-items:center;gap:10px;">
+                    <span style="width:160px;font-size:13px;color:var(--text-primary);">{{ item.fiber_type }}</span>
+                    <div style="flex:1;background:var(--surface-2);border-radius:4px;height:10px;overflow:hidden;">
+                      <div style="background:var(--accent);height:100%;" :style="{ width: item.percentage + '%' }"></div>
+                    </div>
+                    <span class="font-mono" style="width:60px;text-align:right;font-size:13px;">{{ item.percentage.toFixed(1) }}%</span>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="Object.keys(circularitySnapshot.recyclability_summary || {}).length" style="margin-top:20px;">
+                <div class="detail-section-head">可回收性分布</div>
+                <div style="display:flex;gap:16px;margin-top:8px;flex-wrap:wrap;">
+                  <span v-for="(pct, rating) in circularitySnapshot.recyclability_summary" :key="rating" class="tag" style="font-size:12px;">
+                    {{ RECYCLABILITY_LABELS[rating] ?? rating }}：{{ pct.toFixed(1) }}%
+                  </span>
+                </div>
+              </div>
+            </div>
+            <p v-else class="empty-hint">尚無循環經濟資料</p>
+
+            <div style="margin-top:16px;">
+              <button class="btn btn-secondary" :disabled="circularityRecalcLoading" @click="recalcCircularity">
+                {{ circularityRecalcLoading ? '計算中…' : '🔄 重新計算' }}
               </button>
             </div>
           </div>
@@ -371,39 +584,33 @@
 
 <script lang="ts">
 import { defineComponent } from 'vue'
-import { salesProductApi, type SalesProduct, type SalesProductSupplier, type BomLine, type PcfSnapshot, type ProductionBatch } from '@/api/modules/salesProducts'
-import { materialGroupApi } from '@/api/modules/compliance'
+import { salesProductApi, type SalesProduct, type BomLine, type PcfSnapshot, type ProductionBatch, type ProductPackaging, type ProductBatterySpec } from '@/api/modules/salesProducts'
 import { customersApi, type Customer } from '@/api/modules/customers'
+import { circularityApi, type CircularitySnapshot } from '@/api/modules/circularity'
 
 const TABS = [
   { key: 'info',        label: '基本資訊' },
   { key: 'regulations', label: '法規適用' },
+  { key: 'battery',     label: '電池規格', dppCategory: 'battery' },
   { key: 'bom',         label: 'BOM 明細' },
   { key: 'batches',     label: '生產批次' },
   { key: 'pcf',         label: 'PCF 快照' },
+  { key: 'circularity', label: '循環經濟' },
   { key: 'emissions',   label: '碳排回報' },
 ]
+
+const RECYCLABILITY_LABELS: Record<string, string> = {
+  high: '高（易回收）', medium: '中', low: '低（難回收）', not_rated: '未評級',
+}
 
 const STATUS_LABELS: Record<string, string> = {
   valid: '合規', expiring_soon: '即將到期', expired: '已過期',
   missing: '缺文件', unconfigured: '未設定',
 }
 
-const DOC_TYPE_LABELS: Record<string, string> = {
-  UFLPA_DECLARATION: 'UFLPA 聲明',
-  ORIGIN_CERT:       '原產地證書',
-  EUDR_DDS:          'EUDR 盡職調查',
-  REACH_DECLARATION: 'REACH 聲明',
-  ROHS_DECLARATION:  'RoHS 聲明',
-  CONFLICT_MINERALS: '衝突礦產報告',
-  SUPPLIER_COC:      '供應商行為準則',
-  PCF_REPORT:        'PCF 報告',
-  TEST_REPORT:       '測試報告',
-  AUDIT_CERT:        '稽核證書',
-}
-
-const DOC_STATUS_LABELS: Record<string, string> = {
-  valid: '有效', expiring_soon: '即將到期', expired: '已過期', missing: '缺件',
+const FACILITY_TYPE_LABELS: Record<string, string> = {
+  manufacturing: '一般製造', weaving: '織布', knitting: '針織', dyeing: '染整', printing: '印花',
+  wet_processing: '濕製程', garment_assembly: '成衣製造', warehouse: '倉儲', office: '辦公室', other: '其他',
 }
 
 const BOM_LINE_TYPE_LABELS: Record<string, string> = {
@@ -423,40 +630,92 @@ export default defineComponent({
       productionBatches: [] as ProductionBatch[],
       editForm: {} as Partial<SalesProduct> & { customer_id: string },
       activeTab: 'info',
-      // 供應商
-      suppliers: [] as SalesProductSupplier[],
-      suppLoading: false,
-      allSuppliers: [] as any[],
-      materialGroups: [] as any[],
-      addSupplierForm: { supplier_id: '', material_group_id: '' },
-      addingSupplier: false,
       // BOM
       bomLines: [] as BomLine[],
       bomLoading: false,
-      addBomForm: { material_name: '', hs_code: '', quantity: null as number | null },
+      addBomForm: { material_name: '', hs_code: '' },
       addingBom: false,
       // PCF
       pcfSnapshot: null as PcfSnapshot | null,
       pcfLoading: false,
       recalcLoading: false,
+      circularitySnapshot: null as CircularitySnapshot | null,
+      circularityLoading: false,
+      circularityRecalcLoading: false,
+      RECYCLABILITY_LABELS,
+      // 包材資訊
+      packaging: null as ProductPackaging | null,
+      packagingEditing: false,
+      packagingSaving: false,
+      packagingForm: {
+        recycled_content_ratio: null as number | null,
+        recyclable: null as boolean | null,
+        reusable: null as boolean | null,
+        material_description: '',
+      },
+      // 電池規格（dpp_category = battery 專用）
+      batterySpec: null as ProductBatterySpec | null,
+      batterySpecLoading: false,
+      batterySpecSaving: false,
+      batteryForm: {
+        battery_category: null as string | null,
+        chemistry: '',
+        rated_capacity_ah: null as number | null,
+        rated_voltage_v: null as number | null,
+        weight_kg: null as number | null,
+        lithium_recycled_content_ratio: null as number | null,
+        cobalt_recycled_content_ratio: null as number | null,
+        nickel_recycled_content_ratio: null as number | null,
+        lead_recycled_content_ratio: null as number | null,
+        cycle_life: null as number | null,
+        expected_lifetime_years: null as number | null,
+        discharge_efficiency_ratio: null as number | null,
+        initial_capacity_soh_note: '',
+        operating_temp_range: '',
+      },
       // 碳排
       emissions: [] as any[],
       emissionsLoading: false,
       confirmingEmission: {} as Record<string, boolean>,
       // 法規
       syncingReg: false,
+      regSaving: false,
       // 輔助資料
       allCustomers: [] as Customer[],
       TABS,
       STATUS_LABELS,
-      DOC_TYPE_LABELS,
-      DOC_STATUS_LABELS,
+      FACILITY_TYPE_LABELS,
       BOM_LINE_TYPE_LABELS,
     }
   },
+  computed: {
+    // 依 dpp_category 過濾類別專屬分頁（如電池規格僅 dpp_category=battery 顯示）
+    visibleTabs() {
+      return TABS.filter(t => !t.dppCategory || t.dppCategory === this.product?.dpp_category)
+    },
+    // AI 推算法規中尚未被人工採用進「適用法規清單」的項目
+    unadoptedInferredRegs(): string[] {
+      const applicable = this.product?.applicable_regulations ?? []
+      return (this.product?.inferred_regulations ?? []).filter(r => !applicable.includes(r))
+    },
+    // AI 推算法規中已被採用的項目（用於在建議區顯示「已採用」狀態）
+    adoptedInferredRegs(): string[] {
+      const applicable = this.product?.applicable_regulations ?? []
+      return (this.product?.inferred_regulations ?? []).filter(r => applicable.includes(r))
+    },
+    // 上游供應商彙總（由 show() 的 upstream_details 帶回，BOM＋物料核可清單反推而得）
+    upstreamDetails(): any[] {
+      return (this.product as any)?.upstream_details ?? []
+    },
+  },
   async mounted() {
+    const tab = this.$route.query.tab
+    if (typeof tab === 'string' && TABS.some(t => t.key === tab)) {
+      this.activeTab = tab
+    }
     await this.loadProduct()
     this.loadAuxData()
+    this.loadPackaging()
   },
   methods: {
     async loadProduct() {
@@ -471,59 +730,83 @@ export default defineComponent({
     },
     async loadAuxData() {
       try {
-        const http = (await import('@/api/http')).default
-        const [suppRes, mgRes, custRes] = await Promise.all([
-          http.get<any>('/api/v1/suppliers?per_page=200'),
-          materialGroupApi.list(),
-          customersApi.list({ per_page: 200, status: 'active' }),
-        ])
-        this.allSuppliers = suppRes.data?.data?.data ?? suppRes.data?.data ?? []
-        this.materialGroups = mgRes.data.data
-        this.allCustomers = custRes.data.data
+        const { data } = await customersApi.list({ per_page: 200, status: 'active' })
+        this.allCustomers = data.data
       } catch { /* silent */ }
+    },
+    // ── 包材資訊 ──
+    async loadPackaging() {
+      try {
+        const { data } = await salesProductApi.packaging(this.$route.params.id as string)
+        this.packaging = data.data
+      } catch { /* silent */ }
+    },
+    openPackagingEdit() {
+      this.packagingForm = {
+        recycled_content_ratio: this.packaging?.recycled_content_ratio ?? null,
+        recyclable: this.packaging?.recyclable ?? null,
+        reusable: this.packaging?.reusable ?? null,
+        material_description: this.packaging?.material_description ?? '',
+      }
+      this.packagingEditing = true
+    },
+    async savePackaging() {
+      this.packagingSaving = true
+      try {
+        const { data } = await salesProductApi.upsertPackaging(this.$route.params.id as string, this.packagingForm)
+        this.packaging = data.data
+        this.packagingEditing = false
+      } catch (e: any) {
+        alert(e?.response?.data?.message ?? '儲存失敗')
+      } finally {
+        this.packagingSaving = false
+      }
     },
     switchTab(key: string) {
       this.activeTab = key
       if (key === 'bom' && !this.bomLines.length && !this.bomLoading) this.loadBom()
       if (key === 'pcf' && !this.pcfSnapshot && !this.pcfLoading) this.loadPcf()
+      if (key === 'circularity' && !this.circularitySnapshot && !this.circularityLoading) this.loadCircularity()
       if (key === 'emissions' && !this.emissions.length && !this.emissionsLoading) this.loadEmissions()
+      if (key === 'battery' && !this.batterySpec && !this.batterySpecLoading) this.loadBatterySpec()
     },
-    // BOM 行供應商 → 上游合規資訊（由 show() 的 upstream_details 對映）
-    supplierCompliance(supplierId: string | null | undefined): any {
-      if (!supplierId) return null
-      const details = (this.product as any)?.upstream_details ?? []
-      return details.find((d: any) => d.supplier_id === supplierId) ?? null
-    },
-    // ── 供應商 ──
-    async loadSuppliers() {
-      this.suppLoading = true
+    // ── 電池規格 ──
+    async loadBatterySpec() {
+      this.batterySpecLoading = true
       try {
-        const { data } = await salesProductApi.suppliers(this.$route.params.id as string)
-        this.suppliers = data.data
-      } finally { this.suppLoading = false }
+        const { data } = await salesProductApi.batterySpec(this.$route.params.id as string)
+        this.batterySpec = data.data
+        if (this.batterySpec) {
+          this.batteryForm = {
+            battery_category: this.batterySpec.battery_category,
+            chemistry: this.batterySpec.chemistry ?? '',
+            rated_capacity_ah: this.batterySpec.rated_capacity_ah,
+            rated_voltage_v: this.batterySpec.rated_voltage_v,
+            weight_kg: this.batterySpec.weight_kg,
+            lithium_recycled_content_ratio: this.batterySpec.lithium_recycled_content_ratio,
+            cobalt_recycled_content_ratio: this.batterySpec.cobalt_recycled_content_ratio,
+            nickel_recycled_content_ratio: this.batterySpec.nickel_recycled_content_ratio,
+            lead_recycled_content_ratio: this.batterySpec.lead_recycled_content_ratio,
+            cycle_life: this.batterySpec.cycle_life,
+            expected_lifetime_years: this.batterySpec.expected_lifetime_years,
+            discharge_efficiency_ratio: this.batterySpec.discharge_efficiency_ratio,
+            initial_capacity_soh_note: this.batterySpec.initial_capacity_soh_note ?? '',
+            operating_temp_range: this.batterySpec.operating_temp_range ?? '',
+          }
+        }
+      } catch { /* silent */ } finally {
+        this.batterySpecLoading = false
+      }
     },
-    async addSupplier() {
-      if (!this.addSupplierForm.supplier_id) return
-      this.addingSupplier = true
+    async saveBatterySpec() {
+      this.batterySpecSaving = true
       try {
-        await salesProductApi.addSupplier(this.$route.params.id as string, {
-          supplier_id: this.addSupplierForm.supplier_id,
-          material_group_id: this.addSupplierForm.material_group_id || undefined,
-        })
-        this.addSupplierForm = { supplier_id: '', material_group_id: '' }
-        await this.loadSuppliers()
-        await this.loadProduct()
+        const { data } = await salesProductApi.upsertBatterySpec(this.$route.params.id as string, this.batteryForm)
+        this.batterySpec = data.data
       } catch (e: any) {
-        alert(e?.response?.data?.message ?? '新增失敗')
-      } finally { this.addingSupplier = false }
-    },
-    async removeSupplier(suppId: string) {
-      try {
-        await salesProductApi.removeSupplier(this.$route.params.id as string, suppId)
-        await this.loadSuppliers()
-        await this.loadProduct()
-      } catch (e: any) {
-        alert(e?.response?.data?.message ?? '移除失敗')
+        alert(e?.response?.data?.message ?? '儲存失敗')
+      } finally {
+        this.batterySpecSaving = false
       }
     },
     // ── BOM ──
@@ -541,10 +824,9 @@ export default defineComponent({
         await salesProductApi.createBomLine(this.$route.params.id as string, {
           material_name: this.addBomForm.material_name,
           hs_code: this.addBomForm.hs_code || undefined,
-          quantity: this.addBomForm.quantity ?? undefined,
           bom_line_type: 'material',
         })
-        this.addBomForm = { material_name: '', hs_code: '', quantity: null }
+        this.addBomForm = { material_name: '', hs_code: '' }
         await this.loadBom()
       } catch (e: any) {
         alert(e?.response?.data?.message ?? '新增失敗')
@@ -576,6 +858,22 @@ export default defineComponent({
         alert(e?.response?.data?.message ?? '計算失敗')
       } finally { this.recalcLoading = false }
     },
+    async loadCircularity() {
+      this.circularityLoading = true
+      try {
+        const { data } = await circularityApi.latest(this.$route.params.id as string)
+        this.circularitySnapshot = data.data
+      } finally { this.circularityLoading = false }
+    },
+    async recalcCircularity() {
+      this.circularityRecalcLoading = true
+      try {
+        const { data } = await circularityApi.recalc(this.$route.params.id as string)
+        this.circularitySnapshot = data.data
+      } catch (e: any) {
+        alert(e?.response?.data?.message ?? '計算失敗')
+      } finally { this.circularityRecalcLoading = false }
+    },
     // ── 碳排回報 ──
     async loadEmissions() {
       this.emissionsLoading = true
@@ -606,6 +904,34 @@ export default defineComponent({
       } catch (e: any) {
         alert(e?.response?.data?.message ?? '推算失敗')
       } finally { this.syncingReg = false }
+    },
+    // 採用單一 AI 推算法規：併入 applicable_regulations 並儲存
+    async adoptRegulation(reg: string) {
+      if (!this.product) return
+      const next = Array.from(new Set([...(this.product.applicable_regulations ?? []), reg]))
+      await this.saveApplicableRegs(next)
+    },
+    // 採用所有尚未採用的 AI 推算法規
+    async adoptAllRegulations() {
+      if (!this.product) return
+      const next = Array.from(new Set([...(this.product.applicable_regulations ?? []), ...this.unadoptedInferredRegs]))
+      await this.saveApplicableRegs(next)
+    },
+    // 從適用法規清單移除一項（人工取消確認）
+    async removeApplicableReg(reg: string) {
+      if (!this.product) return
+      const next = (this.product.applicable_regulations ?? []).filter(r => r !== reg)
+      await this.saveApplicableRegs(next)
+    },
+    async saveApplicableRegs(regs: string[]) {
+      if (!this.product) return
+      this.regSaving = true
+      try {
+        const { data } = await salesProductApi.update(this.product.id, { applicable_regulations: regs })
+        this.product.applicable_regulations = data.data.applicable_regulations
+      } catch (e: any) {
+        alert(e?.response?.data?.message ?? '更新適用法規清單失敗')
+      } finally { this.regSaving = false }
     },
     // ── 編輯 ──
     enterEditMode() {
@@ -665,37 +991,7 @@ export default defineComponent({
 .detail-layout { display: flex; flex-direction: column; gap: 0; }
 .detail-main { display: flex; flex-direction: column; gap: 0; }
 
-/* ── Tab 導覽 ── */
-.detail-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-  border-radius: 8px 8px 0 0;
-  border: 1px solid var(--border);
-  border-bottom: none;
-  overflow: hidden;
-  flex-wrap: wrap;
-}
-.detail-tab {
-  padding: 11px 20px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-size: 13.5px;
-  font-weight: 500;
-  color: #57534e;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  transition: all 0.15s;
-  white-space: nowrap;
-}
-.detail-tab:hover { color: var(--text-primary); background: var(--surface-2); }
-.detail-tab.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-  font-weight: 600;
-  background: var(--surface);
-}
+/* .detail-tabs/.detail-tab 已移至 components.css 共用（跟供應商/物料詳情頁同一套） */
 .tab-panel {
   border-radius: 0 0 8px 8px !important;
   border-top: none !important;
@@ -711,16 +1007,7 @@ export default defineComponent({
   margin-bottom: 16px;
 }
 
-/* ── Detail Grid ── */
-.detail-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px 32px;
-}
-@media (max-width: 640px) { .detail-grid { grid-template-columns: 1fr; } }
-.detail-item { display: flex; flex-direction: column; gap: 6px; }
-.detail-label { font-size: 11px; color: #a8998f; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
-.detail-value { font-size: 14px; color: var(--text-primary); line-height: 1.45; }
+/* .detail-grid/.detail-item/.detail-label/.detail-value 已移至 components.css 共用 */
 
 /* ── Badge（供應商合規狀態）── */
 .badge-green    { background: #dcfce7; color: #166534; }
@@ -735,28 +1022,28 @@ export default defineComponent({
 /* ── 雜項 ── */
 .no-data { font-size: 13px; color: var(--text-secondary); }
 
-.reg-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 12px;
-}
-.reg-card {
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  padding: 16px;
-  text-align: center;
-}
-.reg-card--active { background: #edf7f2; border-color: #a8d4bf; }
-.reg-card--inactive { background: var(--surface-2); }
-.reg-card-name { font-size: 13px; font-weight: 700; letter-spacing: .04em; color: var(--text-secondary); margin-bottom: 6px; }
-.reg-card-status { font-size: 18px; font-weight: 700; }
-.reg-card--active .reg-card-status { color: #1a5c3a; }
-.reg-card--inactive .reg-card-status { color: var(--text-secondary); }
-.reg-card-detail { font-size: 11px; color: var(--text-secondary); margin-top: 4px; text-transform: capitalize; }
 
 .reg-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .tag-reg { background: #ede9fe; color: #6d28d9; border: 1px solid #c4b5fd; }
 .tag-inferred { background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; }
+.section-hint { font-size: 11px; color: var(--text-secondary); margin: 2px 0 8px; }
+
+.tag-removable { display: inline-flex; align-items: center; gap: 5px; }
+.tag-remove {
+  border: none; background: transparent; color: inherit; opacity: 0.55;
+  cursor: pointer; font-size: 13px; line-height: 1; padding: 0;
+}
+.tag-remove:hover:not(:disabled) { opacity: 1; color: #b91c1c; }
+.tag-remove:disabled { cursor: not-allowed; }
+
+.tag-adoptable { display: inline-flex; align-items: center; gap: 6px; }
+.tag-adopt {
+  border: 1px solid #bae6fd; background: #fff; color: #0369a1;
+  border-radius: 3px; font-size: 10.5px; padding: 1px 6px; cursor: pointer; line-height: 1.6;
+}
+.tag-adopt:hover:not(:disabled) { background: #0369a1; color: #fff; }
+.tag-adopt:disabled { cursor: not-allowed; opacity: 0.6; }
+.tag-adopted { opacity: 0.6; }
 
 .detail-section-head {
   font-size: 11.5px;
@@ -767,19 +1054,6 @@ export default defineComponent({
   margin-bottom: 8px;
 }
 
-.info-card {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 14px 16px;
-}
-.info-card-title {
-  font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: .07em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-}
 
 .pcf-summary {
   background: var(--surface);
@@ -787,9 +1061,13 @@ export default defineComponent({
   border-radius: 8px;
   padding: 16px;
 }
-.pcf-total { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.pcf-total {
+  display: flex; flex-direction: column; gap: 4px;
+  background: var(--accent-soft); border: 1px solid var(--accent-soft-border);
+  border-radius: 8px; padding: 10px 14px;
+}
 .pcf-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
-.pcf-val { font-size: 22px; font-weight: 700; }
+.pcf-val { font-size: 22px; font-weight: 700; color: var(--accent); }
 .pcf-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
 .add-row {
@@ -804,18 +1082,6 @@ export default defineComponent({
 .loading-hint { font-size: 13px; color: var(--text-secondary); padding: 20px 0; }
 .empty-hint { font-size: 13px; color: var(--text-secondary); padding: 16px 0; }
 .erp-note { font-size: 12px; color: var(--text-secondary); padding: 10px 2px 0; border-top: 1px dashed var(--border); margin-top: 10px; }
-.bom-sup-row { display: flex; align-items: center; gap: 6px; }
-.bom-sup-docs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.tier-badge { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 3px; font-size: 10px; background: var(--surface-2); color: var(--accent); border: 1px solid var(--border); }
-
-/* 文件 chip */
-.doc-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500; padding: 2px 7px; border-radius: 4px; margin-right: 4px; background: var(--surface); border: 1px solid var(--border); color: var(--text-primary); white-space: nowrap; }
-.doc-status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.doc-dot--valid         { background: #16a34a; }
-.doc-dot--expiring_soon { background: #d97706; }
-.doc-dot--expired       { background: #dc2626; }
-.doc-dot--missing       { background: #dc2626; }
-.doc-exp { font-size: 10px; font-weight: 400; color: var(--text-secondary); }
 
 /* 碳排來源 badge */
 .esb-pcf_sync        { background: #dcfce7; color: #15803d; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 700; }

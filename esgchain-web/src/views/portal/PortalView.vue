@@ -25,6 +25,11 @@
         <div class="quick-icon">📊</div>
         <div class="quick-label">永續 KPI 填報</div>
       </router-link>
+      <router-link to="/supplier/portal/caps" class="quick-card">
+        <span v-if="unreadCapCount > 0" class="quick-card-badge">{{ unreadCapCount }}</span>
+        <div class="quick-icon">📋</div>
+        <div class="quick-label">矯正行動計畫</div>
+      </router-link>
     </div>
 
     <!-- 待填問卷（SAQ）-->
@@ -80,7 +85,7 @@
           </span>
         </div>
         <router-link
-          to="/supplier/portal/material-emissions"
+          to="/supplier/compliance?tab=material-emissions"
           class="btn btn-secondary btn-sm"
         >前往填報</router-link>
       </div>
@@ -142,10 +147,11 @@ import { useAuthStore } from '@/stores/auth'
 import { questionnaireApi, type Questionnaire } from '@/api/modules/questionnaire'
 import { portalPcfRequestApi, type PcfRequestLineSummary } from '@/api/modules/materialEmissions'
 import { portalFacilityApi, type SupplierFacility } from '@/api/modules/suppliers'
+import { portalNotificationsApi } from '@/api/modules/portalNotifications'
 import { SAQ_STATUS_BADGE } from '@/utils/saqStatus'
 
 const STATUS_LABELS: Record<string, string> = {
-  not_started: '未開始', in_progress: '填寫中', submitted: '已提交',
+  sent: '待填寫', in_progress: '填寫中', submitted: '已提交',
   under_review: '審核中', review_returned: '已退回', completed: '已通過', reviewed: '已複核',
 }
 
@@ -161,6 +167,7 @@ export default defineComponent({
       questionnaires: [] as Questionnaire[],
       pendingPcfLines: [] as PcfRequestLineSummary[],
       facilities: [] as SupplierFacility[],
+      unreadCapCount: 0,
     }
   },
 
@@ -173,9 +180,18 @@ export default defineComponent({
     this.loadSaqData()
     this.loadPcfData()
     this.loadFacilitiesData()
+    this.loadUnreadCapCount()
   },
 
   methods: {
+    async loadUnreadCapCount() {
+      try {
+        const { data } = await portalNotificationsApi.unreadCount()
+        this.unreadCapCount = data.data.unread_count
+      } catch {
+        // 靜默失敗，不影響其他區塊
+      }
+    },
     async loadSaqData() {
       this.isLoadingSaq = true
       try {
@@ -228,10 +244,16 @@ export default defineComponent({
 
 <style scoped>
 .quick-card {
+  position: relative;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 6px; padding: 16px 24px; background: var(--surface);
   border: 1px solid var(--border); border-radius: 8px; text-decoration: none;
   color: var(--text-primary); min-width: 100px; transition: all 0.15s;
+}
+.quick-card-badge {
+  position: absolute; top: 6px; right: 6px; background: #dc2626; color: #fff;
+  font-size: 11px; font-weight: 700; line-height: 1; padding: 3px 6px; border-radius: 999px;
+  min-width: 18px; text-align: center;
 }
 .quick-card:hover { border-color: var(--accent); background: var(--surface-2); }
 .quick-icon { font-size: 22px; }

@@ -50,6 +50,16 @@
                   <span>{{ getBoolValue(field) ? '是' : '否' }}</span>
                 </label>
               </template>
+              <template v-else-if="field.data_type === 'single_choice'">
+                <select
+                  class="filter-select"
+                  :value="getTextValue(field)"
+                  @change="setTextValue(field, ($event.target as HTMLSelectElement).value)"
+                >
+                  <option value="" disabled>請選擇</option>
+                  <option v-for="opt in field.options ?? []" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                </select>
+              </template>
               <template v-else>
                 <input
                   type="number"
@@ -84,19 +94,7 @@
 <script lang="ts">
 import { defineComponent } from 'vue'
 import { portalDisclosureApi, type DisclosureFieldKpi } from '@/api/modules/portalDisclosure'
-
-const PREFIX_LABELS: Record<string, string> = {
-  cert: '認證資格',
-  ghg: '溫室氣體排放',
-  energy: '能源使用',
-  labor: '勞動權益',
-  water: '水資源',
-  waste: '廢棄物',
-  governance: '公司治理',
-  diversity: '多元共融',
-  supply_chain: '供應鏈管理',
-  safety: '職業安全',
-}
+import { DISCLOSURE_PREFIX_LABELS as PREFIX_LABELS } from '@/constants/disclosureDomains'
 
 const SOURCE_LABELS: Record<string, string> = {
   saq_sync: '來自問卷',
@@ -192,6 +190,16 @@ export default defineComponent({
       this.draftValues[field.slug] = isNaN(val) ? null : val
     },
 
+    getTextValue(field: DisclosureFieldKpi): string {
+      if (field.slug in this.draftValues) return (this.draftValues[field.slug] as string) ?? ''
+      const rec = this.currentRecord(field)
+      return rec?.text_value ?? ''
+    },
+
+    setTextValue(field: DisclosureFieldKpi, val: string) {
+      this.draftValues[field.slug] = val
+    },
+
     hasChanged(field: DisclosureFieldKpi): boolean {
       if (!(field.slug in this.draftValues)) {
         // boolean always editable even without draft
@@ -205,9 +213,11 @@ export default defineComponent({
       this.savedKey = null
       this.overwroteKey = null
       try {
-        let value: number | boolean
+        let value: number | boolean | string
         if (field.data_type === 'boolean') {
           value = this.getBoolValue(field)
+        } else if (field.data_type === 'single_choice') {
+          value = this.getTextValue(field)
         } else {
           value = this.draftValues[field.slug] as number
         }
@@ -222,6 +232,7 @@ export default defineComponent({
           period_year: this.selectedYear,
           numeric_value: field.data_type === 'numeric' ? (value as number) : null,
           boolean_value: field.data_type === 'boolean' ? (value as boolean) : null,
+          text_value: field.data_type === 'single_choice' ? (value as string) : null,
           source: 'manual' as const,
           source_saq_id: null,
           updated_at: new Date().toISOString(),

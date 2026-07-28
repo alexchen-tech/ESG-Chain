@@ -12,7 +12,11 @@ class SupplierDisclosureField extends Model
     public $incrementing = false;
 
     protected $fillable = [
-        'slug', 'label', 'data_type', 'unit', 'period_type', 'description',
+        'slug', 'label', 'data_type', 'unit', 'options', 'period_type', 'description',
+    ];
+
+    protected $casts = [
+        'options' => 'array',
     ];
 
     public function disclosures(): HasMany

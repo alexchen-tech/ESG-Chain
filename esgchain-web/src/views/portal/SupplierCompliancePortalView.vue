@@ -388,7 +388,13 @@ export default defineComponent({
     },
   },
 
-  mounted() { this.loadDocs() },
+  mounted() {
+    const tab = this.$route.query.tab
+    if (tab === 'emissions' || tab === 'material-emissions') {
+      this.activeTab = tab
+    }
+    this.loadDocs()
+  },
 
   methods: {
     async loadDocs() {
