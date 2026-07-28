@@ -16,15 +16,17 @@ ESG-Chain（加入永續情報）
   ├─ 永續韌性：SAQ問卷 → AI評分 → 風險矩陣 → CAP矯正行動
   └─ 產品合規：BOM碳排 → PCF計算 → CBAM/EUDR/UFLPA申報
       ↓
-輸出：CSRD / PCF報告 / CBAM申報 / EUDR DDS
+輸出：CSRD / PCF報告 / CBAM申報 / EUDR DDS 草稿
 ```
+
+> **系統功能邊界止於「出口前合規檢查」**：ESG-Chain 只負責在生產批號出口前判斷法規義務是否達標、產出合規佐證文件（如 EUDR DDS 草稿）。實際出口交易執行——客戶/PO 綁定、報關、多批集貨、送件狀態追蹤——屬 ERP 範疇，不在本系統內建置（曾規劃過的「出口申報 Shipment」模組已移除，相關合規文件產出改掛在生產批號詳情頁）。
 
 ### 欄位歸屬（ERP sync 時嚴格遵守）
 
 | 擁有者        | 實體              | 欄位                                                                                  | Sync 行為          |
 |---------------|-------------------|---------------------------------------------------------------------------------------|--------------------|
 | **ERP**       | Supplier          | code, name, hs_code, quantity, supplier_code, status                                  | 每次同步可覆蓋     |
-| **ERP**       | SalesProduct      | name, product_code, hs_code, quantity（出口申報主檔）                                 | 每次同步可覆蓋     |
+| **ERP**       | SalesProduct      | name, product_code, hs_code, quantity（銷售產品主檔）                                 | 每次同步可覆蓋     |
 | **ESG-Chain** | Supplier          | onboarding_stage, saq_score, risk_level, emission_factor                              | 永不被 sync 覆蓋   |
 | **ESG-Chain** | SalesProduct      | applicable_regulations, inferred_regulations, embedded_emissions, emissions_source    | 永不被 sync 覆蓋   |
 
@@ -37,7 +39,6 @@ ESG-Chain（加入永續情報）
 - ❌ ERP sync 時不可覆蓋 `onboarding_stage`、`saq_score`、`risk_level`、`emission_factor`、`applicable_regulations`、`inferred_regulations`
 - ❌ 計算邏輯（SAQ評分、PCF計算）不可寫在 esgchain-api，一律 call esgchain-ai
 - ❌ PcfSnapshot append-only，不可更新或刪除舊版本
-- ❌ Shipment 建立後 `snapshot_id` 鎖定，不隨後續 PCF 重算自動變動
 - ❌ BomLine 不可形成循環參照（A→B→A），新增時呼叫 `ProductBomLineService::assertNoCycle()`
 
 ---
@@ -51,7 +52,7 @@ active ──→ suspended ──→ terminated
              └──→ active
 ```
 
-- `status`（ERP 擁有，active/inactive/suspended）：唯讀，不可從 UI 修改
+- `status`（ERP 擁有，僅 active/inactive 兩種，active 為匯入時預設值）：唯讀，不可從 UI 修改，每次 ERP 同步依匯入資料決定並留稽核歷程
 - `onboarding_stage`（ESG-Chain 擁有）：透過 `POST /api/v1/suppliers/{id}/onboarding-transition` 變更，每次需留稽核日誌
 
 ---
@@ -68,7 +69,7 @@ active ──→ suspended ──→ terminated
 
 ### 資料庫歸屬
 
-- **MySQL**（esgchain-api）：Supplier, SAQ, CAP, BOM, Shipment, PcfRequest, MaterialItemEmission
+- **MySQL**（esgchain-api）：Supplier, SAQ, CAP, BOM, ProductionBatch, BatchExportReview, PcfRequest, MaterialItemEmission
 - **PostgreSQL**（esgchain-ai）：EmissionFactor, ScoringModel, SasbIndustry, RiskAssessment
 
 ### JWT 分工
@@ -133,6 +134,8 @@ docker exec esgchain-web touch <容器路徑>
 - 所有列表頁實作 Server-side Pagination，每頁固定 **20 筆**（`per_page: 20`）
 - 操作按鈕立即 disabled + loading，防止重複送出
 - 數字欄位加 `font-mono` class
+- 側邊欄選單（`AppSidebar.vue`）功能項目改掛到不同功能群組時，**必須同步修改路由 path 前綴**（`router/index.ts` 與相關頁面內的連結），使路由結構與選單分組一致，不可只搬選單、路由留在舊分組前綴下
+- 新增「單一資料多分頁」詳情頁時，沿用 `components.css` 共用的 `.detail-tabs`/`.detail-grid` 等樣式（見下方「設計系統」章節），不要在頁面自己的 `<style scoped>` 重新定義
 
 ---
 
@@ -151,21 +154,34 @@ docker exec esgchain-web touch <容器路徑>
 
 ## 測試帳號（密碼均為 `demo1234`）
 
-| 角色       | Email                      |
-|------------|----------------------------|
-| 管理員     | `admin@esgchain.com`       |
-| 採購商     | `buyer@esgchain.com`       |
-| 永續長     | `sustain@esgchain.com`     |
-| 分析師     | `analyst@esgchain.com`     |
-| 供應商     | `supplier1@tpsteel.com.tw` |
-| 供應商 ESG | `esg@vge.vn`               |
+| 角色       | Email                         |
+|------------|-------------------------------|
+| 管理員     | `admin@esgchain.com`          |
+| 採購商     | `buyer@esgchain.com`          |
+| 永續長     | `sustain@esgchain.com`        |
+| 分析師     | `analyst@esgchain.com`        |
+| 供應商     | `supplier1@twspinning.com.tw` |
+| 供應商 ESG | `esg@vietgarment.vn`          |
 
 ---
 
 ## 設計系統
 
-Warm Paper Light。色票與字型定義在 `esgchain-web/src/assets/global.css`。
+Warm Paper Light。色票與字型 token 定義在 `esgchain-web/src/assets/main.css`（`:root` 變數），
+共用元件樣式（卡片、表格、badge、表單、詳情頁 grid 等）在 `esgchain-web/src/assets/components.css`，
+兩者由 `main.css` 於檔首 `@import './components.css'` 一併載入，全站頁面共用，不建立 `global.css`。
+
 強調色 `--accent: #1a4d3e`（深綠），側邊欄 `--sidebar-bg: #1a1714`。
+`--accent-soft` / `--accent-soft-border` 為強調色淡底，用來標出頁面裡的重點數字/區塊
+（KPI 卡、hero 指標），跟一般中性灰背景（`--surface-2`）區隔出層次，不要用純灰底表示重點內容。
+`--accent-2`（暖陶土色）保留給少數需要跟主色區隔的第二重點，非必要不新增其他強調色，避免整站色彩雜亂。
+
+**單一資料多分頁詳情頁**（例：供應商/物料/銷售產品詳情頁，網址列一個 `{id}`、上方一排 tab 切換概況/歷史/合規等分頁）
+一律共用 `components.css` 裡的 `.detail-tabs` / `.detail-tab` / `.tab-panel-wrap` / `.detail-section` /
+`.section-title` / `.detail-grid` / `.detail-item` / `.detail-label` / `.detail-value` / `.detail-link`
+這一整套樣式，**不可在頁面自己的 `<style scoped>` 裡重新定義同名 class**——之前供應商/物料/銷售產品三個
+詳情頁各自維護過一份，長期下來字級、格線粗細、tab 樣式都各自漂移到不一致的樣子，才回頭統一成共用版本。
+新增這類詳情頁時直接沿用共用 class 即可，不需要也不應該覆寫。
 
 ---
 
