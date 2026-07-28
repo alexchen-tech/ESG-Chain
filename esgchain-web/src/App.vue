@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 
-const NO_SIDEBAR_ROUTES = ['/login', '/supplier/']
+const NO_SIDEBAR_ROUTES = ['/login']
 
 export default defineComponent({
   name: 'App',
@@ -24,8 +24,7 @@ export default defineComponent({
 
     const showSidebar = computed(() =>
       auth.isAuthenticated &&
-      !NO_SIDEBAR_ROUTES.some(p => route.path.startsWith(p)) &&
-      !auth.isSupplier
+      !NO_SIDEBAR_ROUTES.some(p => route.path.startsWith(p))
     )
 
     const mainMargin = computed(() => {

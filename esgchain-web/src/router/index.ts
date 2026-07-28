@@ -28,15 +28,15 @@ const router = createRouter({
       meta: { requiresAuth: true, roles: ['admin', 'buyer', 'sustain', 'comply', 'analyst'] },
     },
     {
-      path: '/dashboard/sustainability-risk',
-      name: 'sustainability-risk',
-      component: () => import('@/views/dashboard/SustainabilityRiskView.vue'),
-      meta: { requiresAuth: true, roles: ['admin', 'sustain', 'analyst'] },
-    },
-    {
       path: '/suppliers',
       name: 'suppliers',
       component: () => import('@/views/suppliers/SuppliersView.vue'),
+      meta: { requiresAuth: true, roles: ['admin', 'buyer', 'sustain', 'comply', 'analyst'] },
+    },
+    {
+      path: '/suppliers/network',
+      name: 'supplier-network',
+      component: () => import('@/views/suppliers/SupplierNetworkView.vue'),
       meta: { requiresAuth: true, roles: ['admin', 'buyer', 'sustain', 'comply', 'analyst'] },
     },
     {
@@ -226,36 +226,6 @@ const router = createRouter({
       meta: { requiresAuth: true, roles: ['admin', 'sustain'] },
     },
     {
-      path: '/supplier/profile',
-      name: 'supplier-profile',
-      component: () => import('@/views/portal/SupplierProfileView.vue'),
-      meta: { requiresAuth: true, roles: ['supplier', 'sup_esg'] },
-    },
-    {
-      path: '/supplier/portal',
-      name: 'supplier-portal',
-      component: () => import('@/views/portal/PortalView.vue'),
-      meta: { requiresAuth: true, roles: ['supplier', 'sup_esg'] },
-    },
-    {
-      path: '/supplier/survey/:id',
-      name: 'supplier-survey',
-      component: () => import('@/views/portal/SupplierSurveyView.vue'),
-      meta: { requiresAuth: true, roles: ['supplier', 'sup_esg'] },
-    },
-    {
-      path: '/supplier/compliance',
-      name: 'supplier-compliance',
-      component: () => import('@/views/portal/SupplierCompliancePortalView.vue'),
-      meta: { requiresAuth: true, roles: ['supplier', 'sup_esg'] },
-    },
-    {
-      path: '/supplier/portal/procurement',
-      name: 'supplier-procurement',
-      component: () => import('@/views/portal/PortalProcurementView.vue'),
-      meta: { requiresAuth: true, roles: ['supplier', 'sup_esg'] },
-    },
-    {
       path: '/trade-goods',
       name: 'trade-goods',
       component: () => import('@/views/trade-goods/TradeGoodsView.vue'),
@@ -302,15 +272,15 @@ const router = createRouter({
       meta: { requiresAuth: true, roles: ['admin', 'buyer', 'comply'] },
     },
     {
-      path: '/compliance/shipments',
-      name: 'shipments',
-      component: () => import('@/views/compliance/ShipmentsView.vue'),
+      path: '/compliance/production-batches/:id',
+      name: 'production-batch-detail',
+      component: () => import('@/views/compliance/ProductionBatchDetailView.vue'),
       meta: { requiresAuth: true, roles: ['admin', 'buyer', 'comply'] },
     },
     {
-      path: '/compliance/shipments/:id',
-      name: 'shipment-detail',
-      component: () => import('@/views/compliance/ShipmentDetailView.vue'),
+      path: '/compliance/export-reviews',
+      name: 'export-reviews',
+      component: () => import('@/views/compliance/ExportReviewsView.vue'),
       meta: { requiresAuth: true, roles: ['admin', 'buyer', 'comply'] },
     },
     {
@@ -320,22 +290,10 @@ const router = createRouter({
       meta: { requiresAuth: true, roles: ['admin', 'buyer', 'sustain', 'comply'] },
     },
     {
-      path: '/compliance/pcf-requests',
+      path: '/materials/pcf-requests',
       name: 'pcf-requests',
       component: () => import('@/views/compliance/PcfRequestsView.vue'),
       meta: { requiresAuth: true, roles: ['admin', 'buyer', 'sustain'] },
-    },
-    {
-      path: '/supplier/portal/pcf',
-      name: 'portal-pcf',
-      component: () => import('@/views/portal/PortalPcfView.vue'),
-      meta: { requiresAuth: true, roles: ['supplier', 'sup_esg'] },
-    },
-    {
-      path: '/supplier/portal/disclosures',
-      name: 'portal-disclosures',
-      component: () => import('@/views/portal/PortalDisclosureView.vue'),
-      meta: { requiresAuth: true, roles: ['supplier', 'sup_esg'] },
     },
   ],
 })
@@ -359,7 +317,7 @@ router.beforeEach(async (to) => {
   if (to.meta.roles && auth.user) {
     const roles = to.meta.roles as string[]
     if (!roles.includes(auth.user.role)) {
-      return auth.isSupplier ? { name: 'supplier-portal' } : { name: 'dashboard' }
+      return { name: 'dashboard' }
     }
   }
 })

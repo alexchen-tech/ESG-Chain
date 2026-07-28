@@ -3,7 +3,7 @@
     <div class="login-card">
       <div class="login-header">
         <h1 class="login-title">ESG·Chain</h1>
-        <p class="login-subtitle">永續供應鏈管理平台</p>
+        <p class="login-subtitle">供應商 Portal</p>
       </div>
 
       <!-- 測試帳號快速登入 -->
@@ -67,7 +67,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 
 export default defineComponent({
-  name: 'LoginView',
+  name: 'PortalLoginView',
 
   setup() {
     return { authStore: useAuthStore(), router: useRouter() }
@@ -78,10 +78,8 @@ export default defineComponent({
       form: { email: '', password: '' },
       errorMsg: '',
       demoAccounts: [
-        { role: '管理員', email: 'admin@esgchain.com', password: 'demo1234' },
-        { role: '採購商', email: 'buyer@esgchain.com', password: 'demo1234' },
-        { role: '永續長', email: 'sustain@esgchain.com', password: 'demo1234' },
-        { role: '分析師', email: 'analyst@esgchain.com', password: 'demo1234' },
+        { role: '供應商', email: 'supplier1@twspinning.com.tw', password: 'demo1234' },
+        { role: '供應商 ESG', email: 'esg@vietgarment.vn', password: 'demo1234' },
       ],
     }
   },
@@ -96,9 +94,9 @@ export default defineComponent({
       this.errorMsg = ''
       try {
         const redirectPath = await this.authStore.login(this.form.email, this.form.password)
-        if (this.authStore.isSupplier) {
+        if (!this.authStore.isSupplier) {
           this.authStore.clearAuth()
-          this.errorMsg = '此帳號為供應商帳號，請至供應商 Portal 登入（/portal.html）'
+          this.errorMsg = '此帳號非供應商帳號，請至中心廠介面登入'
           return
         }
         this.router.push(redirectPath)

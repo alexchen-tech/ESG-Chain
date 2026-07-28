@@ -40,7 +40,7 @@
                 :key="child.name"
                 :to="child.path"
                 class="menu-item menu-child"
-                active-class="menu-item-active"
+                :class="{ 'menu-item-active': isChildActive(child.path) }"
                 @click="isMobile && uiStore.closeMobileSidebar()"
               >
                 <span class="menu-icon" style="font-size:10px;">▸</span>
@@ -53,7 +53,7 @@
             v-else
             :to="item.path"
             class="menu-item"
-            active-class="menu-item-active"
+            :class="{ 'menu-item-active': isChildActive(item.path) }"
             :data-tooltip="item.label"
             @click="isMobile && uiStore.closeMobileSidebar()"
           >
@@ -93,13 +93,21 @@ const ROLE_LABELS: Record<string, string> = {
 
 const ALL_MENU = [
   { name: 'dashboard',      path: '/dashboard',      icon: '⊞', label: '儀表板',      roles: ['admin','buyer','sustain','comply','analyst'] },
-  { name: 'suppliers',      path: '/suppliers',      icon: '⊕', label: '供應商管理',   roles: ['admin','buyer','sustain','comply','analyst'] },
+  {
+    name: 'supplier-group', path: '', icon: '⊕', label: '供應商管理',
+    roles: ['admin','buyer','sustain','comply','analyst'],
+    children: [
+      { name: 'suppliers-list',   path: '/suppliers',         label: '供應商清單',   roles: ['admin','buyer','sustain','comply','analyst'] },
+      { name: 'supplier-network', path: '/suppliers/network', label: '供應鏈連結圖', roles: ['admin','buyer','sustain','comply','analyst'] },
+    ],
+  },
   {
     name: 'material-group', path: '', icon: '▤', label: '物料管理',
     roles: ['admin','buyer','sustain','comply','analyst'],
     children: [
       { name: 'material-items',  path: '/materials/items',  label: '物料主檔', roles: ['admin','buyer','sustain','comply','analyst'] },
       { name: 'material-groups', path: '/materials/groups', label: '物料群組', roles: ['admin','buyer','sustain','comply'] },
+      { name: 'pcf-requests',    path: '/materials/pcf-requests', label: '碳排請求', roles: ['admin','buyer','sustain'] },
     ],
   },
   {
@@ -119,9 +127,8 @@ const ALL_MENU = [
     children: [
       { name: 'compliance-dashboard', path: '/compliance',          label: '合規看板',   roles: ['admin','buyer','sustain','comply'] },
       { name: 'sales-products',        path: '/sales-products',      label: '銷售產品',   roles: ['admin','buyer','sustain','comply'] },
-      { name: 'pcf-requests',          path: '/compliance/pcf-requests',       label: '碳排請求',   roles: ['admin','buyer','sustain'] },
       { name: 'production-batches',   path: '/compliance/production-batches', label: '生產批號', roles: ['admin','buyer','comply'] },
-      { name: 'shipments',             path: '/compliance/shipments',          label: '出口申報', roles: ['admin','buyer','comply'] },
+      { name: 'export-reviews',       path: '/compliance/export-reviews',     label: '出口審查', roles: ['admin','buyer','comply'] },
     ],
   },
   {
@@ -130,6 +137,7 @@ const ALL_MENU = [
     children: [
       { name: 'risk', path: '/risk', label: '永續風險概覽', roles: ['admin','sustain','comply','analyst'] },
       { name: 'risk-geo-events', path: '/risk/geo-events', label: '地緣事件複查', roles: ['admin','sustain'] },
+      { name: 'export-risk-dashboard', path: '/trade-goods/export-risk', label: '出口合規風險看板', roles: ['admin','buyer','sustain','comply'] },
       // { name: 'sustainability-risk', path: '/dashboard/sustainability-risk', label: '永續風險概覽', roles: ['admin','sustain','comply','analyst'] }, // 與六維熱圖完全重疊，已隱藏
       { name: 'cap',  path: '/cap',  label: 'CAP 矯正', roles: ['admin','buyer','sustain','comply'] },
     ],
@@ -189,8 +197,23 @@ export default defineComponent({
       else openGroups.value.push(name)
     }
 
+    // 選單項目的 path 跟目前路由多半是「清單頁／詳情頁互為兄弟路由」而非巢狀路由
+    // （如 /sales-products 與 /sales-products/:id 各自獨立註冊在 router 裡），
+    // router-link 內建的 active-class 只認路由記錄的父子關係，在詳情頁時不會判定
+    // 清單頁選單項目為 active，所以側邊欄改用路徑前綴自行判斷。用邊界檢查避免
+    // 誤判（例如 /sales 前綴不該匹配到 /sales-products）。
+    function isPathActive(current: string, target: string): boolean {
+      if (target === '/') return current === '/'
+      if (current === target) return true
+      return current.startsWith(target) && current[target.length] === '/'
+    }
+
+    function isChildActive(path: string): boolean {
+      return isPathActive(router.currentRoute.value.path, path)
+    }
+
     function isParentActive(item: any): boolean {
-      return item.children?.some((c: any) => router.currentRoute.value.path.startsWith(c.path)) ?? false
+      return item.children?.some((c: any) => isPathActive(router.currentRoute.value.path, c.path)) ?? false
     }
 
     function toggleHandler() {
@@ -211,7 +234,7 @@ export default defineComponent({
       return name.charAt(0).toUpperCase() || '?'
     })
 
-    return { authStore, uiStore, menuItems, roleLabel, logout, isMobile, toggleHandler, openGroups, userRole, toggleGroup, isParentActive, userInitial }
+    return { authStore, uiStore, menuItems, roleLabel, logout, isMobile, toggleHandler, openGroups, userRole, toggleGroup, isParentActive, isChildActive, userInitial }
   },
 })
 </script>
