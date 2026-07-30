@@ -151,7 +151,7 @@
               :class="['supplier-chip', selectedSupplierIds.includes(s.id) && 'supplier-chip--selected']"
             >
               <input type="checkbox" :value="s.id" v-model="selectedSupplierIds" style="display:none;" @change="debouncedLoadComparison" />
-              {{ s.name }}
+              {{ maskSupplierName(s.name) }}
             </label>
           </div>
         </div>
@@ -204,7 +204,7 @@
                       stroke="#fff"
                       stroke-width="1.5"
                     >
-                      <title>{{ sup.supplier_name }}: {{ sup.scores_by_project[proj.id]?.total_score?.toFixed(1) ?? '—' }}</title>
+                      <title>{{ maskSupplierName(sup.supplier_name) }}: {{ sup.scores_by_project[proj.id]?.total_score?.toFixed(1) ?? '—' }}</title>
                     </circle>
                   </g>
                 </svg>
@@ -218,7 +218,7 @@
             <div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;">
               <div v-for="(sup, si) in comparisonData.suppliers" :key="sup.supplier_id" style="display:flex;align-items:center;gap:6px;font-size:12px;">
                 <span :style="{ width:'20px', height:'3px', background: CHART_COLORS[si % CHART_COLORS.length], display:'inline-block', borderRadius:'2px' }"></span>
-                {{ sup.supplier_name ?? sup.supplier_id.slice(0, 8) }}
+                {{ sup.supplier_name ? maskSupplierName(sup.supplier_name) : sup.supplier_id.slice(0, 8) }}
               </div>
             </div>
           </div>
@@ -241,8 +241,8 @@
                     :key="sup.supplier_id"
                     class="trend-sup-col"
                   >
-                    <div class="trend-sup-name" :title="sup.supplier_name ?? sup.supplier_id">
-                      {{ sup.supplier_name ?? sup.supplier_id.slice(0,10) }}
+                    <div class="trend-sup-name" :title="sup.supplier_name ? maskSupplierName(sup.supplier_name) : sup.supplier_id">
+                      {{ sup.supplier_name ? maskSupplierName(sup.supplier_name) : sup.supplier_id.slice(0,10) }}
                     </div>
                     <div class="trend-wave-labels">
                       <span v-for="p in trendProjects" :key="p.id" :title="p.name">
@@ -474,6 +474,7 @@ import {
 import { saqApi } from '@/api/modules/saq'
 import { suppliersApi } from '@/api/modules/suppliers'
 import { settingsApi } from '@/api/modules/settings'
+import { maskSupplierName } from '@/utils/maskName'
 
 const TABS = [
   { key: 'overview', label: '概覽' },
@@ -642,6 +643,7 @@ export default defineComponent({
   mounted() { this.loadAll() },
 
   methods: {
+    maskSupplierName,
     async loadAll() {
       this.isLoading = true
       const id = this.route.params.id as string

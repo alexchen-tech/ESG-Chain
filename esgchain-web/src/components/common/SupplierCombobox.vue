@@ -25,7 +25,7 @@
 
     <!-- 已選狀態 -->
     <div v-if="selectedSupplier && !isOpen" class="combobox-selected">
-      <span class="combobox-selected-name">{{ selectedSupplier.name }}</span>
+      <span class="combobox-selected-name">{{ maskSupplierName(selectedSupplier.name) }}</span>
       <span class="combobox-selected-code font-mono">{{ selectedSupplier.code }}</span>
       <span class="tier-badge">T{{ selectedSupplier.tier }}</span>
     </div>
@@ -41,7 +41,7 @@
         @mousedown.prevent="select(s)"
       >
         <div class="combobox-option-main">
-          <span class="combobox-option-name">{{ s.name }}</span>
+          <span class="combobox-option-name">{{ maskSupplierName(s.name) }}</span>
           <span class="combobox-option-code font-mono">{{ s.code }}</span>
           <span class="tier-badge">T{{ s.tier }}</span>
         </div>
@@ -56,6 +56,7 @@
 <script lang="ts">
 import { defineComponent } from 'vue'
 import http from '@/api/http'
+import { maskSupplierName } from '@/utils/maskName'
 
 interface SupplierOption {
   id: string
@@ -113,6 +114,7 @@ export default defineComponent({
   },
 
   methods: {
+    maskSupplierName,
     onFocus() {
       this.isOpen = true
       if (!this.results.length) this.search()

@@ -32,6 +32,14 @@
       <!-- comply: 商品合規風險 -->
       <DashboardComplianceRisk v-if="role === 'comply' || role === 'admin'" :risk="complianceRisk" />
 
+      <!-- sustain / comply / admin: 供應商碳盤查覆蓋度（依群組） -->
+      <DashboardGhgCoverageByGroup
+        v-if="['sustain', 'comply', 'admin'].includes(role)"
+        :data="ghgCoverageByGroup"
+        :period-year="ghgCoveragePeriodYear"
+        @update:period-year="onGhgCoverageYearChange"
+      />
+
       <!-- buyer: Tier 分布 -->
       <DashboardSupplierTier v-if="role === 'buyer' || role === 'admin'" :distribution="tierDistribution" />
 
@@ -57,7 +65,7 @@
 import { defineComponent } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
-import { suppliersApi, type Supplier } from '@/api/modules/suppliers'
+import { suppliersApi, type Supplier, supplierGhgCoverageApi, type SupplierGhgCoverageByGroup } from '@/api/modules/suppliers'
 import { dashboardApi, type DashboardSummary, type RecentActivity, type ExpiringDoc, type ComplianceRisk } from '@/api/modules/dashboard'
 import { riskApi, type SixDimHeatmapRow } from '@/api/modules/risk'
 import type { EsgScores } from '@/components/dashboard/DashboardEsgScores.vue'
@@ -69,6 +77,7 @@ import DashboardComplianceRisk from '@/components/dashboard/DashboardComplianceR
 import DashboardEsgScores from '@/components/dashboard/DashboardEsgScores.vue'
 import DashboardSupplierTier from '@/components/dashboard/DashboardSupplierTier.vue'
 import DashboardSupplyChainMap from '@/components/dashboard/DashboardSupplyChainMap.vue'
+import DashboardGhgCoverageByGroup from '@/components/dashboard/DashboardGhgCoverageByGroup.vue'
 
 const ROLE_LABELS: Record<string, string> = {
   admin: '系統管理員', buyer: '採購商', sustain: '永續長',
@@ -89,6 +98,7 @@ export default defineComponent({
     DashboardEsgScores,
     DashboardSupplierTier,
     DashboardSupplyChainMap,
+    DashboardGhgCoverageByGroup,
   },
 
   setup() {
@@ -107,6 +117,8 @@ export default defineComponent({
       esgScores: null as EsgScores | null,
       tierDistribution: null as TierDistribution | null,
       heatmapRows: [] as SixDimHeatmapRow[],
+      ghgCoverageByGroup: null as SupplierGhgCoverageByGroup | null,
+      ghgCoveragePeriodYear: null as number | null,
     }
   },
 
@@ -164,6 +176,15 @@ export default defineComponent({
           if (riskRes) this.complianceRisk = riskRes.data.data
         }
 
+        // sustain/comply/admin: 供應商碳盤查覆蓋度（依群組），年度預設抓最新一年
+        if (['sustain', 'comply', 'admin'].includes(this.role)) {
+          const trendRes = await supplierGhgCoverageApi.trend().catch(() => null)
+          if (trendRes && trendRes.data.data.length > 0) {
+            this.ghgCoveragePeriodYear = trendRes.data.data[trendRes.data.data.length - 1].period_year
+          }
+          await this.loadGhgCoverageByGroup()
+        }
+
         if (this.role === 'admin' || this.role === 'buyer') {
           const suppliersRes = await suppliersApi.list({ per_page: 200 }).catch(() => null)
           if (suppliersRes) {
@@ -184,6 +205,14 @@ export default defineComponent({
       }
     },
 
+    async loadGhgCoverageByGroup() {
+      const res = await supplierGhgCoverageApi.byGroup(this.ghgCoveragePeriodYear ?? undefined).catch(() => null)
+      if (res) this.ghgCoverageByGroup = res.data.data
+    },
+    onGhgCoverageYearChange(year: number | null) {
+      this.ghgCoveragePeriodYear = year
+      this.loadGhgCoverageByGroup()
+    },
     statusLabel(status: string): string {
       return STATUS_LABELS[status] ?? status
     },

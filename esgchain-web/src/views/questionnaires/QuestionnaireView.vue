@@ -48,7 +48,7 @@
       </select>
       <select v-model="filterSupplierId" class="filter-select" style="width:200px;" @change="resetAndLoad">
         <option value="">所有供應商</option>
-        <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+        <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ maskSupplierName(s.name) }}</option>
       </select>
     </div>
 
@@ -77,8 +77,8 @@
             :class="{ 'row-overdue': isOverdue(q) }"
           >
             <td class="num">{{ (pagination.current_page - 1) * pagination.per_page + i + 1 }}</td>
-            <td class="cell-ellipsis cell-name" :title="q.supplier?.name">
-              {{ q.supplier?.name ?? q.supplier_id.slice(0,8) }}
+            <td class="cell-ellipsis cell-name" :title="maskSupplierName(q.supplier?.name)">
+              {{ q.supplier?.name ? maskSupplierName(q.supplier.name) : q.supplier_id.slice(0,8) }}
             </td>
             <td class="cell-ellipsis cell-project" :title="(q as any).project?.name">{{ (q as any).project?.name ?? '—' }}</td>
             <td>
@@ -123,6 +123,7 @@ import { defineComponent } from 'vue'
 import { questionnaireApi, type Questionnaire, type QuestionnaireCounts } from '@/api/modules/questionnaire'
 import { saqProjectApi, type SaqProject } from '@/api/modules/saq'
 import { suppliersApi, type Supplier } from '@/api/modules/suppliers'
+import { maskSupplierName } from '@/utils/maskName'
 import { SAQ_STATUS_LABEL, SAQ_STATUS_BADGE } from '@/utils/saqStatus'
 
 const STATUSES = [
@@ -212,6 +213,7 @@ export default defineComponent({
     goPage(page: number) { this.pagination.current_page = page; this.loadData() },
     statusLabel: (s: string) => SAQ_STATUS_LABEL[s] ?? s,
     statusBadgeClass: (s: string) => SAQ_STATUS_BADGE[s] ?? 'badge-gray',
+    maskSupplierName,
     isOverdue(q: Questionnaire): boolean {
       const dueDate = (q as any).project?.due_date ?? q.deadline
       if (!dueDate) return false

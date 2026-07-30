@@ -12,7 +12,7 @@
       <div class="page-header" style="align-items:flex-start;">
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <h1 class="page-title" style="margin:0;word-break:break-word;">{{ saq.supplier?.name }}</h1>
+            <h1 class="page-title" style="margin:0;word-break:break-word;">{{ maskSupplierName(saq.supplier?.name) }}</h1>
             <div v-if="saq.project?.template?.scoring_framework" class="framework-tag-wrap">
               <span style="font-size:12px;color:var(--text-secondary);white-space:nowrap;">評核框架</span>
               <span class="framework-chip">{{ saq.project.template.scoring_framework }}</span>
@@ -405,6 +405,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { questionnaireApi } from '@/api/modules/questionnaire'
 import { saqApi } from '@/api/modules/saq'
 import { SAQ_STATUS_LABEL, SAQ_STATUS_BADGE } from '@/utils/saqStatus'
+import { maskSupplierName } from '@/utils/maskName'
 
 export default defineComponent({
   name: 'ReviewDetailView',
@@ -617,6 +618,7 @@ export default defineComponent({
   mounted() { this.loadSaq() },
 
   methods: {
+    maskSupplierName,
     pillarColor(idx: number): string {
       return (this as any).pillarColors[idx % (this as any).pillarColors.length]
     },

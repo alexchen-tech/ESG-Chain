@@ -173,7 +173,7 @@
               >
                 <div class="sc-head">
                   <div class="sc-name-wrap">
-                    <span class="sc-name">{{ s.name }}</span>
+                    <span class="sc-name">{{ maskSupplierName(s.name) }}</span>
                     <span class="sc-meta">{{ s.country_code }} · Tier {{ s.tier }} · <span class="font-mono">{{ s.code || '—' }}</span></span>
                   </div>
                   <div class="sc-head-right">
@@ -241,6 +241,7 @@ import { defineComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import { riskApi, type RiskMatrixCell, type RiskDimension, type RiskMatrixSummary } from '@/api/modules/risk'
 import { useCompareStore } from '@/stores/compareStore'
+import { maskSupplierName } from '@/utils/maskName'
 
 const SIX_DIMS = [
   { key: 'dim_e1', label: 'E1' },
@@ -338,6 +339,7 @@ export default defineComponent({
   mounted() { this.loadMatrix() },
 
   methods: {
+    maskSupplierName,
     async switchDim(dim: RiskDimension) {
       this.activeDim = dim
       this.activeCell = null

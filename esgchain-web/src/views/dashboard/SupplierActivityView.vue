@@ -69,7 +69,7 @@
                 {{ typeLabel(item.event_type) }}
               </span>
             </td>
-            <td style="font-weight:500;font-size:13px;">{{ item.supplier_name }}</td>
+            <td style="font-weight:500;font-size:13px;">{{ maskSupplierName(item.supplier_name) }}</td>
             <td style="font-size:13px;color:var(--text-secondary);">{{ item.event_label }}</td>
             <td>
               <span class="sev-dot" :class="`sev-dot--${item.severity}`">
@@ -94,6 +94,7 @@
 <script lang="ts">
 import { defineComponent } from 'vue'
 import { dashboardApi, type RecentActivity } from '@/api/modules/dashboard'
+import { maskSupplierName } from '@/utils/maskName'
 
 const TYPE_LABELS: Record<string, string> = {
   doc_uploaded:  '文件上傳',
@@ -142,6 +143,8 @@ export default defineComponent({
   mounted() { this.load() },
 
   methods: {
+    maskSupplierName,
+
     async load() {
       this.isLoading = true
       this.page = 1

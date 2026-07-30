@@ -4,7 +4,7 @@
     <div class="drawer-header">
       <div>
         <span class="drawer-title">替代供應商</span>
-        <div class="drawer-subtitle">換供應商對象：{{ supplierName }}</div>
+        <div class="drawer-subtitle">換供應商對象：{{ maskSupplierName(supplierName) }}</div>
       </div>
       <button class="drawer-close" @click="$emit('close')">×</button>
     </div>
@@ -29,7 +29,7 @@
 
         <div class="candidate-info">
           <div class="candidate-name">
-            {{ c.name }}
+            {{ maskSupplierName(c.name) }}
             <span class="country-badge">{{ countryFlag(c.country_code) }} {{ c.country_code }}</span>
             <span v-if="c.already_in_supply_chain" class="in-chain-badge">已在供應鏈</span>
           </div>
@@ -50,6 +50,7 @@
 
 <script>
 import api from '@/api/http'
+import { maskSupplierName } from '@/utils/maskName'
 
 const LEVEL_LABEL = { extreme: '極高', high: '高', medium: '中', low: '低', very_low: '極低' }
 const AXIS_CLASS  = {
@@ -100,6 +101,7 @@ export default {
       }
     },
 
+    maskSupplierName,
     axisClass(level) { return AXIS_CLASS[level] ?? '' },
 
     // axis1_score（ESG 揭露風險分數，越高越好）轉五級，與義務缺口面板一致

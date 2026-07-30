@@ -10,7 +10,7 @@
         <h1 class="page-title">
           <span v-if="isLoading" style="color:var(--text-secondary);font-weight:400;font-size:20px;">載入中…</span>
           <template v-else>
-            {{ supplierName }}
+            {{ maskSupplierName(supplierName) }}
             <span style="font-weight:400;color:var(--text-secondary);"> — 合規文件</span>
           </template>
         </h1>
@@ -318,6 +318,7 @@
 import { defineComponent } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { complianceDocApi, supplierTradeGoodsApi, supplierBomRequirementsApi, type SupplierComplianceDoc, type SupplierComplianceSummary, type TradeGood, type BomRequirementProduct } from '@/api/modules/compliance'
+import { maskSupplierName } from '@/utils/maskName'
 
 const DOC_TYPES = [
   { value: 'UFLPA_DECLARATION', label: 'UFLPA 聲明（美國新疆棉）' },
@@ -372,6 +373,8 @@ export default defineComponent({
   mounted() { this.loadData() },
 
   methods: {
+    maskSupplierName,
+
     async loadData() {
       this.isLoading = true
       this.bomReqLoading = true

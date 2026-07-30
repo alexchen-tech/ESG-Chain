@@ -357,7 +357,7 @@
               </thead>
               <tbody>
                 <tr v-for="s in upstreamDetails" :key="s.supplier_id">
-                  <td>{{ s.supplier_name }}</td>
+                  <td>{{ maskSupplierName(s.supplier_name) }}</td>
                   <td>{{ s.material_group || '—' }}</td>
                   <td>
                     <template v-if="s.supplier_facility_name">
@@ -402,7 +402,7 @@
                   <template v-if="b.lot_pcf != null">{{ Number(b.lot_pcf).toFixed(2) }} <span class="unit">kgCO₂e/件</span></template>
                   <template v-else>—</template>
                 </td>
-                <td>{{ b.supplier_name || '—' }}<span v-if="b.supplier_code" class="font-mono" style="font-size:11px;color:var(--text-secondary);"> · {{ b.supplier_code }}</span></td>
+                <td>{{ b.supplier_name ? maskSupplierName(b.supplier_name) : '—' }}<span v-if="b.supplier_code" class="font-mono" style="font-size:11px;color:var(--text-secondary);"> · {{ b.supplier_code }}</span></td>
               </tr>
             </tbody>
           </table>
@@ -534,7 +534,7 @@
               </thead>
               <tbody>
                 <tr v-for="e in emissions" :key="e.id">
-                  <td>{{ e.supplier?.name ?? '—' }}</td>
+                  <td>{{ e.supplier?.name ? maskSupplierName(e.supplier.name) : '—' }}</td>
                   <td class="font-mono">{{ e.emissions_value.toFixed(4) }}</td>
                   <td>{{ e.calculation_note || '—' }}</td>
                   <td class="font-mono" style="font-size:11px;white-space:nowrap;">{{ e.reported_at?.slice(0, 16) }}</td>
@@ -587,6 +587,7 @@ import { defineComponent } from 'vue'
 import { salesProductApi, type SalesProduct, type BomLine, type PcfSnapshot, type ProductionBatch, type ProductPackaging, type ProductBatterySpec } from '@/api/modules/salesProducts'
 import { customersApi, type Customer } from '@/api/modules/customers'
 import { circularityApi, type CircularitySnapshot } from '@/api/modules/circularity'
+import { maskSupplierName } from '@/utils/maskName'
 
 const TABS = [
   { key: 'info',        label: '基本資訊' },
@@ -718,6 +719,8 @@ export default defineComponent({
     this.loadPackaging()
   },
   methods: {
+    maskSupplierName,
+
     async loadProduct() {
       this.isLoading = true
       try {

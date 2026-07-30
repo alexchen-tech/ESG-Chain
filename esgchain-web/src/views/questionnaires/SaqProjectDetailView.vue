@@ -96,7 +96,7 @@
           <tbody>
             <tr v-for="saq in saqs" :key="saq.id">
               <td style="overflow:hidden;">
-                <div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" :title="saq.supplier?.name">{{ saq.supplier?.name ?? '—' }}</div>
+                <div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" :title="maskSupplierName(saq.supplier?.name)">{{ saq.supplier?.name ? maskSupplierName(saq.supplier.name) : '—' }}</div>
                 <div style="font-size:12px;color:var(--text-secondary);">{{ saq.supplier?.code ?? '' }}</div>
               </td>
               <td style="white-space:nowrap;">Tier {{ saq.supplier?.tier ?? '—' }}</td>
@@ -160,7 +160,7 @@
                   :class="{ 'already-sent': isSent(s.id) }"
                 >
                   <input type="checkbox" :value="s.id" v-model="selectedIds" :disabled="isSent(s.id)" />
-                  <span style="margin-left:8px;">{{ s.name }}</span>
+                  <span style="margin-left:8px;">{{ maskSupplierName(s.name) }}</span>
                   <span style="font-size:12px;color:var(--text-secondary);margin-left:6px;">{{ s.code }}</span>
                   <span v-if="isSent(s.id)" class="already-badge">已發送</span>
                 </label>
@@ -188,7 +188,7 @@
               :class="{ 'already-sent': isSent(s.id) }"
             >
               <input type="checkbox" :value="s.id" v-model="selectedIds" :disabled="isSent(s.id)" />
-              <span style="margin-left:8px;">{{ s.name }}</span>
+              <span style="margin-left:8px;">{{ maskSupplierName(s.name) }}</span>
               <span style="font-size:12px;color:var(--text-secondary);margin-left:6px;">{{ s.code }} · Tier {{ s.tier }}</span>
               <span v-if="isSent(s.id)" class="already-badge">已發送</span>
             </label>
@@ -359,6 +359,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { saqProjectApi, type SaqProject, type SAQ, type ProjectQuestion } from '@/api/modules/saq'
 import { suppliersApi, supplierGroupsApi, type Supplier, type SupplierGroup } from '@/api/modules/suppliers'
 import { SAQ_STATUS_LABEL, SAQ_STATUS_BADGE } from '@/utils/saqStatus'
+import { maskSupplierName } from '@/utils/maskName'
 
 export default defineComponent({
   name: 'SaqProjectDetailView',
@@ -425,6 +426,7 @@ export default defineComponent({
   mounted() { this.loadAll() },
 
   methods: {
+    maskSupplierName,
     async loadAll() {
       this.isLoading = true
       const id = this.route.params.id as string

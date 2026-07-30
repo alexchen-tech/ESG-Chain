@@ -281,7 +281,7 @@
                 <template v-if="pf.confirmed && editingProcessType !== pf.process_type">
                   <div class="origin-detail">{{ pf.selected?.facility_name || '—' }}</div>
                   <div v-if="pf.selected?.country" class="origin-detail">{{ pf.selected.country }}</div>
-                  <div class="origin-detail">{{ pf.selected?.supplier_name || '—' }}</div>
+                  <div class="origin-detail">{{ pf.selected?.supplier_name ? maskSupplierName(pf.selected.supplier_name) : '—' }}</div>
 
                   <!-- SAQ 六維風險盡職調查串接：染整/濕製程/印花→環境管理，成衣縫製→社會責任 -->
                   <template v-if="dueDiligenceFor(pf.process_type)">
@@ -321,7 +321,7 @@
                       <select v-model="processFacilityForm.candidateKey" class="form-select" :disabled="processFacilitySaving">
                         <option value="">請選擇</option>
                         <option v-for="c in pf.candidates" :key="c.supplier_id + '|' + c.facility_id" :value="c.supplier_id + '|' + c.facility_id">
-                          {{ c.supplier_name }}（{{ c.facility_name }}）
+                          {{ maskSupplierName(c.supplier_name) }}（{{ c.facility_name }}）
                         </option>
                       </select>
                     </div>
@@ -355,7 +355,7 @@
                 <div class="scc-header">
                   <span class="scc-material">{{ sc.material_name }}</span>
                   <span v-if="sc.selected_supplier" class="tag" :class="sc.supplier_confirmed ? 'tag-ok' : 'tag-pending'">
-                    {{ sc.supplier_confirmed ? '已選定' : '建議（未確認）' }}：{{ sc.selected_supplier.name }}
+                    {{ sc.supplier_confirmed ? '已選定' : '建議（未確認）' }}：{{ maskSupplierName(sc.selected_supplier.name) }}
                   </span>
                   <span v-else class="tag tag-uflpa">尚無核可供應商</span>
                   <button
@@ -416,7 +416,7 @@
                       <label class="form-label">實際供應商（最後合規確認） <span class="req">*</span></label>
                       <select v-model="originForm.supplier_id" class="form-select" :disabled="originBomLineSuppliersLoading" @change="onOriginSupplierSelected">
                         <option value="">未指定</option>
-                        <option v-for="s in originBomLineSupplierOptions" :key="s.id" :value="s.id">{{ s.name }} ({{ s.code }})</option>
+                        <option v-for="s in originBomLineSupplierOptions" :key="s.id" :value="s.id">{{ maskSupplierName(s.name) }} ({{ s.code }})</option>
                       </select>
                       <span v-if="!originBomLineSuppliersLoading && !originBomLineSupplierOptions.length" style="display:block;font-size:11px;color:#dc2626;">
                         此物料尚無核可供應商清單，請先至「物料管理」對應物料頁面登錄
@@ -570,6 +570,7 @@
 import { defineComponent } from 'vue'
 import { productionBatchApi, rawMaterialOriginApi, processFacilityApi, processDueDiligenceApi, type ProductionBatch, type BatchPassport, type BatchProcessFacilityItem, type ProcessDueDiligenceItem } from '@/api/modules/productionBatch'
 import { type BomLine } from '@/api/modules/salesProducts'
+import { maskSupplierName } from '@/utils/maskName'
 
 // 比照 SupplierComplianceDetailView.vue 的文件類型標籤，維持全站一致的顯示名稱
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -673,6 +674,7 @@ export default defineComponent({
   },
 
   methods: {
+    maskSupplierName,
     async loadAllSuppliers() {
       try {
         const http = (await import('@/api/http')).default

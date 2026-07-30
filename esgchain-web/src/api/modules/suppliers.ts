@@ -116,6 +116,91 @@ export const suppliersApi = {
     http.delete(`/api/v1/suppliers/${supplierId}/contacts/${contactId}`),
 }
 
+// ─── 碳盤查覆蓋度稽核 ────────────────────────────────────────────────────────
+
+export interface SupplierGhgScopeValue {
+  period_year: number
+  numeric_value: number
+}
+
+export interface SupplierGhgCoverageItem {
+  supplier_id: string
+  supplier_name: string
+  coverage_level: '未盤查' | '僅範疇一二' | '含範疇三'
+  scope1: SupplierGhgScopeValue | null
+  scope2: SupplierGhgScopeValue | null
+  scope3: SupplierGhgScopeValue | null
+}
+
+export interface SupplierGhgCoverageBucket {
+  group_id: string | null
+  group_name: string
+  total: number
+  not_surveyed_count: number
+  partial_count: number
+  full_count: number
+  coverage_rate: number
+}
+
+export interface SupplierGhgCoverageOverall {
+  total: number
+  not_surveyed_count: number
+  partial_count: number
+  full_count: number
+  coverage_rate: number
+}
+
+export interface SupplierGhgCoverageByGroup {
+  groups: SupplierGhgCoverageBucket[]
+  overall: SupplierGhgCoverageOverall
+}
+
+export interface SupplierGhgCoverageTrendPoint {
+  period_year: number
+  total_suppliers: number
+  not_surveyed_count: number
+  partial_count: number
+  full_count: number
+  coverage_rate: number
+}
+
+export interface SupplierGhgCoverageListParams {
+  periodYear?: number
+  sortBy?: 'scope1' | 'scope2' | 'scope3'
+  sortDir?: 'asc' | 'desc'
+  page?: number
+  perPage?: number
+}
+
+export interface Pagination {
+  current_page: number
+  per_page: number
+  total: number
+  last_page: number
+}
+
+export const supplierGhgCoverageApi = {
+  list: (params: SupplierGhgCoverageListParams = {}) =>
+    http.get<{ success: boolean; data: SupplierGhgCoverageItem[]; pagination: Pagination }>(
+      '/api/v1/suppliers/ghg-coverage',
+      {
+        params: {
+          period_year: params.periodYear,
+          sort_by: params.sortBy,
+          sort_dir: params.sortDir,
+          page: params.page ?? 1,
+          per_page: params.perPage ?? 20,
+        },
+      }
+    ),
+  byGroup: (periodYear?: number) =>
+    http.get<{ success: boolean; data: SupplierGhgCoverageByGroup }>('/api/v1/suppliers/ghg-coverage/by-group', {
+      params: periodYear ? { period_year: periodYear } : undefined,
+    }),
+  trend: () =>
+    http.get<{ success: boolean; data: SupplierGhgCoverageTrendPoint[] }>('/api/v1/suppliers/ghg-coverage/trend'),
+}
+
 export const supplierGroupsApi = {
   list: () => http.get<{ success: boolean; data: SupplierGroup[] }>('/api/v1/settings/supplier-groups'),
 }
@@ -180,6 +265,30 @@ export const activityReportApi = {
 
   push: (supplierId: string, reportId: string) =>
     http.post<{ success: boolean }>(`/api/v1/suppliers/${supplierId}/activity-reports/${reportId}/push`),
+}
+
+export interface ActivityReportDashboardItem extends ActivityDataReport {
+  facility?: { id: string; name: string; supplier_id?: string; supplier?: { id: string; name: string } }
+}
+
+export interface ActivityReportSummary {
+  total: number
+  by_status: { draft: number; submitted: number; verified: number }
+  by_push_status: { not_pushed: number; success: number; failed: number }
+}
+
+export const activityReportDashboardApi = {
+  list: (params: { status?: string; push_status?: string; report_period?: string; supplier_id?: string; page?: number; per_page?: number }) =>
+    http.get<{ data: ActivityReportDashboardItem[]; meta: { current_page: number; last_page: number; per_page: number; total: number } }>('/api/v1/activity-reports', { params }),
+
+  summary: () =>
+    http.get<{ data: ActivityReportSummary }>('/api/v1/activity-reports/summary'),
+
+  verify: (reportId: string) =>
+    http.post<{ data: ActivityDataReport }>(`/api/v1/activity-reports/${reportId}/verify`),
+
+  push: (reportId: string) =>
+    http.post<{ success: boolean }>(`/api/v1/activity-reports/${reportId}/push`),
 }
 
 export const portalFacilityApi = {

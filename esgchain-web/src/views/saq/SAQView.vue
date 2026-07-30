@@ -41,7 +41,7 @@
         <tbody>
           <tr v-for="(saq, i) in saqs" :key="saq.id">
             <td class="num">{{ i + 1 }}</td>
-            <td>{{ saq.supplier?.name ?? saq.supplier_id.slice(0, 8) }}</td>
+            <td>{{ saq.supplier?.name ? maskSupplierName(saq.supplier.name) : saq.supplier_id.slice(0, 8) }}</td>
             <td><span class="badge" :class="saqBadgeClass(saq.status)">{{ saqStatusLabel(saq.status) }}</span></td>
             <td class="num">{{ saq.score != null ? saq.score.toFixed(1) : '—' }}</td>
             <td>
@@ -70,7 +70,7 @@
         </div>
         <div v-if="reviewTarget">
           <p style="font-size: 14px; margin-bottom: 12px; color: var(--text-secondary);">
-            供應商：<strong>{{ reviewTarget.supplier?.name }}</strong>
+            供應商：<strong>{{ maskSupplierName(reviewTarget.supplier?.name) }}</strong>
             ｜分數：<span class="font-mono">{{ reviewTarget.score?.toFixed(1) }}</span>
             ｜等級：<span class="badge" :class="gradeBadgeClass(reviewTarget.grade || '')">{{ reviewTarget.grade }}</span>
           </p>
@@ -92,6 +92,7 @@
 <script lang="ts">
 import { defineComponent } from 'vue'
 import { saqApi, type SAQ } from '@/api/modules/saq'
+import { maskSupplierName } from '@/utils/maskName'
 
 const SAQ_STATUS_LABELS: Record<string, string> = {
   pending: '待發送', sent: '已發送', in_progress: '填寫中',
@@ -116,6 +117,7 @@ export default defineComponent({
   mounted() { this.loadData() },
 
   methods: {
+    maskSupplierName,
     async loadData() {
       this.isLoading = true
       try {

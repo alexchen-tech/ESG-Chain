@@ -16,7 +16,7 @@
           {{ severityIcon(item.severity) }}
         </span>
         <div class="activity-body">
-          <div class="activity-supplier">{{ item.supplier_name }}</div>
+          <div class="activity-supplier">{{ maskSupplierName(item.supplier_name) }}</div>
           <div class="activity-label">{{ item.event_label }}</div>
         </div>
         <div class="activity-time">{{ relativeTime(item.occurred_at) }}</div>
@@ -32,6 +32,7 @@
 import { defineComponent } from 'vue'
 import type { PropType } from 'vue'
 import type { RecentActivity } from '@/api/modules/dashboard'
+import { maskSupplierName } from '@/utils/maskName'
 
 const LIMIT = 5
 
@@ -48,6 +49,7 @@ export default defineComponent({
     visible(): RecentActivity[] { return this.activities.slice(0, LIMIT) },
   },
   methods: {
+    maskSupplierName,
     severityIcon(severity: string): string {
       return { warning: '!', pending: '○', info: '●' }[severity] ?? '●'
     },

@@ -11,7 +11,7 @@
       >
         <div class="timeline-dot" :class="{ 'timeline-dot--critical': doc.days_remaining <= 3 }"></div>
         <div class="timeline-body">
-          <div class="timeline-supplier">{{ doc.supplier_name }}</div>
+          <div class="timeline-supplier">{{ maskSupplierName(doc.supplier_name) }}</div>
           <div class="timeline-doc">{{ doc.doc_type }}</div>
         </div>
         <div class="timeline-days font-mono" :class="{ 'timeline-days--critical': doc.days_remaining <= 3 }">
@@ -26,6 +26,7 @@
 import { defineComponent } from 'vue'
 import type { PropType } from 'vue'
 import type { ExpiringDoc } from '@/api/modules/dashboard'
+import { maskSupplierName } from '@/utils/maskName'
 
 export default defineComponent({
   name: 'DashboardExpiringDocs',
@@ -34,6 +35,9 @@ export default defineComponent({
       type: Array as PropType<ExpiringDoc[]>,
       default: () => [],
     },
+  },
+  methods: {
+    maskSupplierName,
   },
 })
 </script>

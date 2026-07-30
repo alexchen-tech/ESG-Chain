@@ -12,7 +12,7 @@
       <canvas ref="canvas" class="sc-canvas" @mousemove="onMouseMove" @mouseleave="onMouseLeave" @click="onCanvasClick" />
       <!-- Tooltip -->
       <div v-if="tooltip" class="sc-tooltip" :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px' }">
-        <div class="sc-tt-name">{{ tooltip.supplier_name }}</div>
+        <div class="sc-tt-name">{{ maskSupplierName(tooltip.supplier_name) }}</div>
         <div class="sc-tt-row">
           <span class="sc-tt-dot" :style="{ background: tooltip.color }"></span>
           {{ tooltip.levelLabel }}
@@ -42,6 +42,7 @@
 import { defineComponent, type PropType } from 'vue'
 import type { SixDimHeatmapRow } from '@/api/modules/risk'
 import type { ExpiringDoc } from '@/api/modules/dashboard'
+import { maskSupplierName } from '@/utils/maskName'
 
 const LEVELS = [
   { key: 'critical', label: '極端', color: '#b91c1c' },
@@ -144,6 +145,7 @@ export default defineComponent({
   },
 
   methods: {
+    maskSupplierName,
     buildPoints() {
       this.points = this.rows.map(row => {
         const impact = getImpact(row)

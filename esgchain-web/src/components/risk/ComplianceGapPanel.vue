@@ -28,7 +28,7 @@
           <!-- 責任供應商清單 -->
           <div class="suppliers-list" v-if="ob.responsible_suppliers?.length">
             <div v-for="sup in ob.responsible_suppliers" :key="sup.id" class="supplier-row">
-              <span class="sup-name">{{ sup.name }}</span>
+              <span class="sup-name">{{ maskSupplierName(sup.name) }}</span>
               <span class="axis-chip" :class="axisClass(sup.axis1_level)"
                 :title="`ESG揭露：${sup.axis1_score ?? '—'}`">
                 E: {{ sup.axis1_level ? LEVEL_LABEL[sup.axis1_level] ?? sup.axis1_level : '—' }}
@@ -58,6 +58,7 @@
 
 <script>
 import api from '@/api/http'
+import { maskSupplierName } from '@/utils/maskName'
 
 const STATUS_LABEL = { valid: '合規', expiring_soon: '即將到期', missing: '缺文件' }
 const STATUS_CLASS  = { valid: 'status-valid', expiring_soon: 'status-expiring', missing: 'status-missing' }
@@ -112,6 +113,7 @@ export default {
       }
     },
 
+    maskSupplierName,
     statusLabel(s) { return STATUS_LABEL[s] ?? s },
     statusClass(s) { return STATUS_CLASS[s] ?? '' },
     axisClass(level) { return AXIS_CLASS[level] ?? '' },

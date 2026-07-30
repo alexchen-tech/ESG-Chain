@@ -5,7 +5,7 @@
       <div style="display:flex; align-items:center; gap:12px;">
         <button class="btn btn-secondary btn-sm" @click="router.push('/suppliers')">← 返回列表</button>
         <div v-if="supplier">
-          <h1 class="page-title">{{ isEditing ? editForm.name : supplier.name }}</h1>
+          <h1 class="page-title">{{ isEditing ? editForm.name : maskSupplierName(supplier.name) }}</h1>
           <div class="supplier-meta-chips">
             <span class="meta-chip meta-chip-mono">{{ supplier.code }}</span>
             <span class="meta-chip">{{ supplier.country_code }}</span>
@@ -54,7 +54,7 @@
             <div class="detail-grid">
               <div class="detail-item">
                 <span class="detail-label">名稱</span>
-                <span class="detail-value">{{ supplier.name }}</span>
+                <span class="detail-value">{{ maskSupplierName(supplier.name) }}</span>
                 <span v-if="isEditing" style="display:block;font-size:11px;color:var(--text-secondary);">僅可透過 ERP 同步建立，不可修改</span>
               </div>
               <div class="detail-item">
@@ -728,6 +728,7 @@ import { questionnaireApi, type Questionnaire } from '@/api/modules/questionnair
 import { riskApi } from '@/api/modules/risk'
 import { settingsApi, type SasbIndustry, type SupplierGroup } from '@/api/modules/settings'
 import { supplierBomRequirementsApi, type BomRequirementProduct } from '@/api/modules/compliance'
+import { maskSupplierName } from '@/utils/maskName'
 import CountrySelect from '@/components/common/CountrySelect.vue'
 import SupplierRiskRadarChart from '@/components/risk/SupplierRiskRadarChart.vue'
 import AiRiskSuggestionPanel from '@/components/suppliers/AiRiskSuggestionPanel.vue'
@@ -1207,6 +1208,7 @@ export default defineComponent({
   beforeUnmount() { window.removeEventListener('resize', (this as any)._onTrendResize) },
 
   methods: {
+    maskSupplierName,
     setTrendTab(tab: 'bar' | 'delta' | 'trend') {
       this.trendChartTab = tab
       if (tab !== 'delta') {

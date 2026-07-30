@@ -73,7 +73,7 @@
               <div class="cap-desc">{{ parsedTitle(cap.title).description }}</div>
               <div v-if="cap.description" class="cap-desc" style="color:var(--text-secondary);font-size:12px;margin-top:2px;">{{ cap.description }}</div>
             </td>
-            <td class="supplier-cell">{{ supplierName(cap) }}</td>
+            <td class="supplier-cell">{{ maskSupplierName(supplierName(cap)) }}</td>
             <td style="text-align:center;">
               <span class="badge" :class="sourceBadgeClass(cap.source_type)">{{ sourceLabel(cap.source_type) }}</span>
             </td>
@@ -212,7 +212,7 @@
             {{ parsedTitle(selectedCAP?.title ?? '').docType }}
           </span>
           <div class="cap-summary-title">{{ parsedTitle(selectedCAP?.title ?? '').description }}</div>
-          <div class="cap-summary-supplier">🏭 {{ selectedCAP ? supplierName(selectedCAP) : '' }}</div>
+          <div class="cap-summary-supplier">🏭 {{ selectedCAP ? maskSupplierName(supplierName(selectedCAP)) : '' }}</div>
           <div v-if="selectedCAP?.description" class="cap-summary-desc">{{ selectedCAP.description }}</div>
         </div>
         <div class="form-group">
@@ -258,6 +258,7 @@
 <script lang="ts">
 import { defineComponent } from 'vue'
 import { capApi, type CAP, type CAPAttachment } from '@/api/modules/cap'
+import { maskSupplierName } from '@/utils/maskName'
 
 const STATUS_FILTERS = [
   { value: '', label: '全部', cls: '' },
@@ -335,6 +336,8 @@ export default defineComponent({
   },
 
   methods: {
+    maskSupplierName,
+
     async loadData() {
       this.isLoading = true
       try {

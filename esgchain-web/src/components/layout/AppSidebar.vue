@@ -99,6 +99,7 @@ const ALL_MENU = [
     children: [
       { name: 'suppliers-list',   path: '/suppliers',         label: '供應商清單',   roles: ['admin','buyer','sustain','comply','analyst'] },
       { name: 'supplier-network', path: '/suppliers/network', label: '供應鏈連結圖', roles: ['admin','buyer','sustain','comply','analyst'] },
+      { name: 'supplier-ghg-coverage', path: '/suppliers/ghg-coverage', label: '碳盤查涵蓋度', roles: ['admin','sustain','comply'] },
     ],
   },
   {
@@ -129,6 +130,7 @@ const ALL_MENU = [
       { name: 'sales-products',        path: '/sales-products',      label: '銷售產品',   roles: ['admin','buyer','sustain','comply'] },
       { name: 'production-batches',   path: '/compliance/production-batches', label: '生產批號', roles: ['admin','buyer','comply'] },
       { name: 'export-reviews',       path: '/compliance/export-reviews',     label: '出口審查', roles: ['admin','buyer','comply'] },
+      { name: 'scope3-category1',     path: '/compliance/scope3-category1',   label: '產品碳足跡調查', roles: ['admin','buyer','sustain','comply'] },
     ],
   },
   {

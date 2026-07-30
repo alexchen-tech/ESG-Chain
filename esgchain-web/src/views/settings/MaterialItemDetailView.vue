@@ -103,7 +103,7 @@
               <div class="compare-stat">
                 <div class="compare-stat-label">最低（最佳）</div>
                 <div class="compare-stat-value">{{ emissionStats.min.value.toFixed(4) }}<span class="compare-stat-unit">/{{ item.unit || '件' }}</span></div>
-                <div class="compare-stat-supplier">{{ emissionStats.min.supplier_name }}</div>
+                <div class="compare-stat-supplier">{{ maskSupplierName(emissionStats.min.supplier_name) }}</div>
               </div>
               <div class="compare-stat">
                 <div class="compare-stat-label">平均</div>
@@ -113,7 +113,7 @@
               <div class="compare-stat">
                 <div class="compare-stat-label">最高</div>
                 <div class="compare-stat-value">{{ emissionStats.max.value.toFixed(4) }}<span class="compare-stat-unit">/{{ item.unit || '件' }}</span></div>
-                <div class="compare-stat-supplier">{{ emissionStats.max.supplier_name }}</div>
+                <div class="compare-stat-supplier">{{ maskSupplierName(emissionStats.max.supplier_name) }}</div>
               </div>
             </div>
 
@@ -132,7 +132,7 @@
               <tbody>
                 <tr v-for="g in sortedEmissionGroups" :key="g.supplier_id ?? 'buyer'">
                   <td>
-                    <span style="font-size:13px;font-weight:500;">{{ g.supplier_name }}</span>
+                    <span style="font-size:13px;font-weight:500;">{{ maskSupplierName(g.supplier_name) }}</span>
                     <span v-if="!g.latest.supplier_id" class="badge badge-gray" style="font-size:10px;margin-left:6px;">未指定 BOM</span>
                   </td>
                   <td style="text-align:right;">
@@ -176,7 +176,7 @@
               <span class="detail-label">供應商</span>
               <select v-model="addApprovedForm.supplier_id" class="form-select">
                 <option value="">— 請選擇 —</option>
-                <option v-for="s in allSuppliers" :key="s.id" :value="s.id">{{ s.name }} ({{ s.code }})</option>
+                <option v-for="s in allSuppliers" :key="s.id" :value="s.id">{{ maskSupplierName(s.name) }} ({{ s.code }})</option>
               </select>
             </div>
             <div class="detail-item">
@@ -200,7 +200,7 @@
             </thead>
             <tbody>
               <tr v-for="s in approvedSuppliers" :key="s.id">
-                <td style="font-weight:500;">{{ s.supplier?.name }}</td>
+                <td style="font-weight:500;">{{ maskSupplierName(s.supplier?.name) }}</td>
                 <td>
                   <span v-if="s.role === 'primary'" class="badge badge-green" style="font-size:10px;">主要供應商</span>
                   <span v-else style="font-size:11px;color:var(--text-secondary);">備用供應商</span>
@@ -243,7 +243,7 @@
                 </thead>
                 <tbody>
                   <tr v-for="s in line.suppliers" :key="s.bom_line_supplier_id" :class="{ 'is-primary-row': s.role === 'primary' }">
-                    <td style="font-weight:500;">{{ s.supplier_name }}</td>
+                    <td style="font-weight:500;">{{ maskSupplierName(s.supplier_name) }}</td>
                     <td style="text-align:right;">
                       <span v-if="s.emissions_value != null">
                         <span class="font-mono" style="font-weight:700;">{{ s.emissions_value.toFixed(4) }}</span>
@@ -523,6 +523,7 @@ import { materialItemApi, materialGroupApi, type MaterialItem, type MaterialGrou
 import { materialEmissionApi, type MaterialEmissionGroup, type MaterialItemEmission } from '@/api/modules/materialEmissions'
 import { chemicalApi, type MaterialItemChemical } from '@/api/modules/suppliers'
 import http from '@/api/http'
+import { maskSupplierName } from '@/utils/maskName'
 
 const TABS = [
   { key: 'info', label: '識別資訊' },
@@ -679,6 +680,7 @@ export default defineComponent({
   },
 
   methods: {
+    maskSupplierName,
     async switchTab(key: string) {
       this.activeTab = key
       if (key === 'emissions' && !this.emissionGroups.length) await this.loadEmissions()
@@ -731,7 +733,7 @@ export default defineComponent({
       }
     },
     async removeApprovedSupplier(s: MaterialItemSupplier) {
-      if (!confirm(`確認將「${s.supplier?.name}」從此物料的核可清單移除？`)) return
+      if (!confirm(`確認將「${maskSupplierName(s.supplier?.name)}」從此物料的核可清單移除？`)) return
       try {
         await materialItemApi.removeApprovedSupplier(this.itemId, s.id)
         await this.loadApprovedSuppliers()
@@ -756,7 +758,7 @@ export default defineComponent({
     },
 
     async doSwitchPrimary(line: MaterialBomLineRow, target: MaterialBomLineSupplierOption) {
-      if (!confirm(`確認將「${line.product_name}」此物料的主供應商切換為 ${target.supplier_name}？\n將觸發 PCF 重新計算。`)) return
+      if (!confirm(`確認將「${line.product_name}」此物料的主供應商切換為 ${maskSupplierName(target.supplier_name)}？\n將觸發 PCF 重新計算。`)) return
       this.switchingLineId = line.bom_line_id
       try {
         await materialItemApi.switchPrimarySupplier(this.itemId, line.bom_line_id, target.supplier_id)

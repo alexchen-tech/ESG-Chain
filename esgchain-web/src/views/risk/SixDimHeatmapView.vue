@@ -238,7 +238,7 @@
                 @change="toggleCompare(row)"
               />
             </td>
-            <td class="col-supplier">{{ row.supplier_name }}</td>
+            <td class="col-supplier">{{ maskSupplierName(row.supplier_name) }}</td>
             <td class="col-country">{{ row.country_code || '—' }}</td>
             <!-- 維度格子 + delta 徽章 -->
             <td
@@ -282,7 +282,7 @@
     <div v-if="selectedRow && !compareMode" class="detail-panel" @click.self="selectedRow = null">
       <div class="detail-content">
         <div class="detail-header">
-          <h2>{{ selectedRow.supplier_name }}</h2>
+          <h2>{{ maskSupplierName(selectedRow.supplier_name) }}</h2>
           <button class="close-btn" @click="selectedRow = null">✕</button>
         </div>
         <div class="detail-meta">
@@ -344,7 +344,7 @@
               v-for="sid in compareIds"
               :key="sid"
               class="cp-bar-item cp-name"
-            >{{ compareRowMap[sid]?.supplier_name ?? '—' }}</div>
+            >{{ compareRowMap[sid]?.supplier_name ? maskSupplierName(compareRowMap[sid]?.supplier_name) : '—' }}</div>
           </div>
         </div>
         <!-- 維度長條圖 -->
@@ -386,6 +386,7 @@
 import { riskApi } from '@/api/modules/risk'
 import RiskMatrix5x5 from '@/components/risk/RiskMatrix5x5.vue'
 import CompareModal from '@/components/CompareModal.vue'
+import { maskSupplierName } from '@/utils/maskName'
 
 const DIMS = [
   { key: 'E1', field: 'dim_e1', label: '環境管理' },
@@ -513,6 +514,8 @@ export default {
     this.loadData()
   },
   methods: {
+    maskSupplierName,
+
     async loadData() {
       this.loading = true
       try {
@@ -616,7 +619,7 @@ export default {
         if (this.compareIds.length >= 5) {
           const removed = this.rows.find(r => r.supplier_id === this.compareIds[0])
           this.compareIds.shift()
-          this.showToast(`已替換 ${removed?.supplier_name ?? ''}`)
+          this.showToast(`已替換 ${removed?.supplier_name ? this.maskSupplierName(removed.supplier_name) : ''}`)
         }
         this.compareIds.push(sid)
       }

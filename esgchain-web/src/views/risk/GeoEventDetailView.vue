@@ -55,7 +55,7 @@
           </thead>
           <tbody>
             <tr v-for="r in reviews" :key="r.id" class="data-row">
-              <td>{{ r.supplier?.name ?? r.supplier_id }}</td>
+              <td>{{ r.supplier?.name ? maskSupplierName(r.supplier.name) : r.supplier_id }}</td>
               <td>{{ r.supplier?.country_code ?? '—' }}</td>
               <td class="col-num font-mono">{{ r.pre_e4_score !== null ? r.pre_e4_score.toFixed(1) : '—' }}</td>
               <td class="col-num font-mono" :class="postClass(r)">
@@ -75,6 +75,7 @@
 
 <script>
 import { riskApi } from '@/api/modules/risk'
+import { maskSupplierName } from '@/utils/maskName'
 
 export default {
   name: 'GeoEventDetailView',
@@ -96,6 +97,8 @@ export default {
   mounted() { this.loadAll() },
   beforeUnmount() { this.stopPoll() },
   methods: {
+    maskSupplierName,
+
     async loadAll() {
       this.loading = true
       try {

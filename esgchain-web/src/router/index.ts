@@ -52,6 +52,12 @@ const router = createRouter({
       meta: { requiresAuth: true, roles: ['admin', 'buyer'] },
     },
     {
+      path: '/suppliers/ghg-coverage',
+      name: 'supplier-ghg-coverage',
+      component: () => import('@/views/suppliers/SupplierGhgCoverageView.vue'),
+      meta: { requiresAuth: true, roles: ['admin', 'sustain', 'comply'] },
+    },
+    {
       path: '/suppliers/:id',
       name: 'supplier-detail',
       component: () => import('@/views/suppliers/SupplierDetailView.vue'),
@@ -290,10 +296,20 @@ const router = createRouter({
       meta: { requiresAuth: true, roles: ['admin', 'buyer', 'sustain', 'comply'] },
     },
     {
+      path: '/compliance/scope3-category1',
+      name: 'scope3-category1',
+      component: () => import('@/views/compliance/Scope3Category1View.vue'),
+      meta: { requiresAuth: true, roles: ['admin', 'buyer', 'sustain', 'comply'] },
+    },
+    {
       path: '/materials/pcf-requests',
       name: 'pcf-requests',
       component: () => import('@/views/compliance/PcfRequestsView.vue'),
       meta: { requiresAuth: true, roles: ['admin', 'buyer', 'sustain'] },
+    },
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: '/dashboard',
     },
   ],
 })

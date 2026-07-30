@@ -70,7 +70,7 @@
               </td>
               <td class="font-mono" style="font-size:11px;color:var(--text-secondary);">{{ item.erp_order_no || '—' }}</td>
               <td class="font-mono">{{ item.production_date || '—' }}</td>
-              <td>{{ item.supplier_name || '—' }}<span v-if="item.supplier_code" class="font-mono" style="font-size:11px;color:var(--text-secondary);"> · {{ item.supplier_code }}</span></td>
+              <td>{{ item.supplier_name ? maskSupplierName(item.supplier_name) : '—' }}<span v-if="item.supplier_code" class="font-mono" style="font-size:11px;color:var(--text-secondary);"> · {{ item.supplier_code }}</span></td>
               <td>{{ item.product_name || '—' }}</td>
               <td>{{ item.market || '—' }}</td>
               <td>
@@ -194,7 +194,7 @@
                     <div class="detail-list">
                       <div class="detail-list-row"><span class="detail-label">品名</span><span class="detail-value">{{ panel(item.id).ddsDraft.trade_good_name ?? '—' }}</span></div>
                       <div class="detail-list-row"><span class="detail-label">HS Code</span><span class="detail-value font-mono">{{ panel(item.id).ddsDraft.hs_code ?? '—' }}</span></div>
-                      <div class="detail-list-row"><span class="detail-label">供應商</span><span class="detail-value">{{ panel(item.id).ddsDraft.supplier ?? '—' }}</span></div>
+                      <div class="detail-list-row"><span class="detail-label">供應商</span><span class="detail-value">{{ panel(item.id).ddsDraft.supplier ? maskSupplierName(panel(item.id).ddsDraft.supplier) : '—' }}</span></div>
                       <div class="detail-list-row"><span class="detail-label">數量</span><span class="detail-value font-mono">{{ panel(item.id).ddsDraft.quantity }} {{ panel(item.id).ddsDraft.unit }}</span></div>
                       <div class="detail-list-row"><span class="detail-label">批次 PCF</span><span class="detail-value font-mono">{{ panel(item.id).ddsDraft.lot_pcf ?? '—' }}</span></div>
                     </div>
@@ -225,6 +225,7 @@ import {
   type BatchExportReview, type BatchExportReviewFinding, type DdsDraft, type BatchPassport,
 } from '@/api/modules/productionBatch'
 import { EXPORT_MARKETS } from '@/constants/markets'
+import { maskSupplierName } from '@/utils/maskName'
 
 const MARKETS: string[] = [...EXPORT_MARKETS]
 
@@ -308,6 +309,8 @@ export default defineComponent({
     await this.loadData()
   },
   methods: {
+    maskSupplierName,
+
     async loadData() {
       this.isLoading = true
       try {

@@ -42,7 +42,7 @@
           </thead>
           <tbody>
             <tr v-for="item in items" :key="item.id">
-              <td style="font-weight:500;">{{ item.vendor_name }}</td>
+              <td style="font-weight:500;">{{ maskSupplierName(item.vendor_name) }}</td>
               <td class="font-mono" style="font-size:12px;">{{ item.vat_number || '—' }}</td>
               <td style="font-size:12px;">
                 <span v-if="editingId===item.id">
@@ -92,7 +92,7 @@
     <div v-if="exemptTarget" class="modal-overlay" @click.self="exemptTarget=null">
       <div class="modal" style="min-width:380px;">
         <div class="modal-header"><span class="modal-title">申請豁免</span><button class="modal-close" @click="exemptTarget=null">×</button></div>
-        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">廠商：{{ exemptTarget.vendor_name }}</p>
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">廠商：{{ maskSupplierName(exemptTarget.vendor_name) }}</p>
         <div class="form-group">
           <label class="form-label">豁免原因 *</label>
           <textarea v-model="exemptNotes" class="form-textarea" placeholder="如：對方為台電，無主要聯絡信箱" />
@@ -129,6 +129,7 @@
 import { defineComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { supplierImportApi, type SupplierImport, type ImportBatchStatus, FAILURE_CODE_LABELS } from '@/api/modules/supplierImport'
+import { maskSupplierName } from '@/utils/maskName'
 
 const TABS = [
   { key: 'rejected', label: '需補救' },
@@ -171,6 +172,7 @@ export default defineComponent({
   },
 
   methods: {
+    maskSupplierName,
     async loadStatus() {
       try {
         const { data } = await supplierImportApi.status(this.batchId)

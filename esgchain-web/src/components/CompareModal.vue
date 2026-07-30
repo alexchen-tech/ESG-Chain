@@ -25,7 +25,7 @@
                   class="cm-supplier-col"
                 >
                   <div class="cm-supplier-head">
-                    <span class="cm-sup-name">{{ s.name }}</span>
+                    <span class="cm-sup-name">{{ maskSupplierName(s.name) }}</span>
                     <span class="cm-sup-meta">{{ s.country_code }} · Tier {{ s.tier }}</span>
                     <span class="cm-sup-stage badge" :class="stageClass(s.onboarding_stage)">{{ s.onboarding_stage || '—' }}</span>
                   </div>
@@ -106,6 +106,7 @@
 import { defineComponent } from 'vue'
 import { useCompareStore } from '@/stores/compareStore'
 import { riskApi } from '@/api/modules/risk'
+import { maskSupplierName } from '@/utils/maskName'
 
 const DIMS = [
   { key: 'E1', field: 'E1', label: '環境管理' },
@@ -166,6 +167,7 @@ export default defineComponent({
   },
 
   methods: {
+    maskSupplierName,
     async fetchMissing() {
       const missing = this.suppliers.filter(s => !this.sixDimMap[s.id])
       if (!missing.length) return
