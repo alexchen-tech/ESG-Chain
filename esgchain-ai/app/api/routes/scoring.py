@@ -140,7 +140,13 @@ async def score_saq(
     request: SAQScoringRequest,
     current_user: dict = Depends(get_current_user),
 ) -> SAQScoringResultResponse:
-    """SAQ 同步計分（domain-aware + industry-aware）"""
+    """SAQ 同步計分（domain-aware + industry-aware）
+
+    DEPRECATED（2026-07-30）：esgchain-api 已不再呼叫本端點。CLAUDE.md 規定計算密集任務
+    一律走 Celery 非同步（見 `/celery/saq-scoring`），esgchain-api 端的
+    `SAQService::triggerScoring()` 已改為 dispatch `DispatchSaqScoringJob`。
+    目前找不到任何呼叫方，保留此端點僅為向下相容，暫不刪除；若確認無外部依賴可移除。
+    """
     return calculate_saq_score(
         saq_id=request.saq_id,
         responses=request.responses,

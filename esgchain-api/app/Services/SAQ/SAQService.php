@@ -2,13 +2,14 @@
 
 namespace App\Services\SAQ;
 
+use App\Jobs\DispatchSaqScoringJob;
 use App\Models\SAQ;
 use App\Models\SaqProject;
 use App\Models\Supplier;
 use App\Services\Disclosure\DisclosureSyncService;
+use App\Services\Settings\SystemSettingsService;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Carbon;
 
 class SAQService
@@ -116,8 +117,8 @@ class SAQService
             'comment' => '問卷已提交',
         ]);
 
-        // 觸發 FastAPI 計分（非同步）
-        $this->triggerScoring($saq);
+        // 觸發 FastAPI 計分（非同步，走 Celery：與 DispatchSaqScoringJob 統一路徑）
+        DispatchSaqScoringJob::dispatch($saq->id);
 
         return $saq->fresh();
     }
@@ -209,47 +210,76 @@ class SAQService
         return $saq->fresh();
     }
 
-    private function triggerScoring(SAQ $saq): void
+    /**
+     * 儲存六維度分數，並以 series.dim_weights 合成總分/分級後寫回 SAQ。
+     */
+    public function applyDimScores(SAQ $saq, array $dims): SAQ
     {
-        $aiUrl = config('services.ai.url', env('AI_SERVICE_URL', 'http://esgchain-ai:8000'));
+        $synthScore = $this->synthesizeDimScore($saq, $dims);
+        $synthGrade = $this->deriveGrade($synthScore, $saq->project?->series?->grade_thresholds ?? []);
 
-        try {
-            $saq->loadMissing([
-                'supplier.sasbIndustry',
-                'responses.question.sasbTopic',
-                'responses.question.questionTags',
-                'project.template',
-            ]);
+        $saq->update(array_merge($dims, [
+            'score' => $synthScore,
+            'grade' => $synthGrade,
+        ]));
 
-            // scoring_framework 由範本決定（project domain 為向後相容 fallback）
-            $scoringFramework = $saq->project?->template?->scoring_framework;
+        return $saq->fresh();
+    }
 
-            $responses = $saq->responses->map(fn($r) => [
-                'question_id'      => $r->question_id,
-                'source_question_id' => $r->question->source_bank_question_id,
-                'weight'           => $r->question->weight ?? 1.0,
-                'answer'           => $r->answer,
-                'answer_options'   => $r->answer_options,
-                'sasb_topic'       => $r->question->sasbTopic?->topic_name,
-                'tag_slugs'        => $r->question->questionTags->pluck('slug')->toArray(),
-            ])->toArray();
+    /**
+     * 以六維度分數與 series.dim_weights 合成 0–100 總分。
+     * dim_eN 已為 0–100 scale（AI 端輸出），直接加權。
+     */
+    public function synthesizeDimScore(SAQ $saq, array $dims): float
+    {
+        $series = $saq->project?->series;
+        $weights = $series?->dim_weights
+            ?? app(SystemSettingsService::class)->getDimWeightDefaults();
 
-            $industryCode = $saq->supplier?->sasbIndustry?->code;
+        $keys = ['E1'=>'dim_e1','E2'=>'dim_e2','E3'=>'dim_e3','E4'=>'dim_e4','E5'=>'dim_e5','E6'=>'dim_e6'];
+        $weightedSum = 0.0;
+        $weightTotal = 0.0;
 
-            $response = Http::timeout(10)->post("{$aiUrl}/ai/v1/scoring/saq", [
-                'saq_id'              => $saq->id,
-                'scoring_framework'   => $scoringFramework,
-                'responses'           => $responses,
-                'sasb_industry_code'  => $industryCode,
-                'callback_url'        => rtrim(env('LARAVEL_INTERNAL_URL', 'http://esgchain-api:8080'), '/') . "/api/v1/internal/saqs/{$saq->id}/score-callback",
-            ]);
-
-            if ($response->successful()) {
-                $jobId = $response->json('job_id');
-                $saq->update(['scoring_job_id' => $jobId]);
+        foreach ($keys as $eKey => $dimKey) {
+            $val = $dims[$dimKey] ?? null;
+            $w   = $weights[$eKey] ?? 0;
+            if ($val !== null && $w > 0) {
+                $weightedSum += $val * $w;
+                $weightTotal += $w;
             }
-        } catch (\Throwable) {
-            // 計分失敗不中斷主流程，待重試
         }
+
+        return $weightTotal > 0 ? round($weightedSum / $weightTotal, 2) : 0.0;
+    }
+
+    public function deriveGrade(float $score, array $thresholds): string
+    {
+        if ($score >= ($thresholds['A'] ?? 80.0)) return 'A';
+        if ($score >= ($thresholds['B'] ?? 60.0)) return 'B';
+        if ($score >= ($thresholds['C'] ?? 40.0)) return 'C';
+        if ($score >= ($thresholds['D'] ?? 20.0)) return 'D';
+        return 'E';
+    }
+
+    /**
+     * LLM 文字題評分回寫：重算 raw_score = llm_score/100 * weight。
+     * 使用參數綁定，避免字串插值組 Raw SQL。
+     */
+    public function applyLlmScore(SAQ $saq, string $projectQuestionId, float $llmScore, ?string $reason): void
+    {
+        $weight = DB::table('project_questions')
+            ->where('id', $projectQuestionId)
+            ->value('weight');
+
+        $rawScore = $llmScore / 100.0 * (float) ($weight ?? 0);
+
+        $saq->responses()
+            ->where('project_question_id', $projectQuestionId)
+            ->update([
+                'llm_score'        => $llmScore,
+                'llm_score_reason' => $reason,
+                'score_confidence' => 'medium',
+                'raw_score'        => $rawScore,
+            ]);
     }
 }

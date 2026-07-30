@@ -15,7 +15,6 @@ use App\Services\SAQ\SaqScoreSnapshotService;
 use App\Services\SAQ\SaqReviewerScoreService;
 use App\Services\Questionnaire\QuestionnaireService;
 use App\Services\Settings\SasbRequiredTopicService;
-use App\Services\Settings\SystemSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -283,13 +282,7 @@ class SAQController extends Controller
             ];
 
             // 儲存六維度分數到 SAQ，並以 series.dim_weights 合成總分
-            $synthScore = $this->synthesizeDimScore($updated, $dims);
-            $synthGrade = $this->deriveGrade($synthScore, $updated->project?->series?->grade_thresholds ?? []);
-            $updated->update(array_merge($dims, [
-                'score' => $synthScore,
-                'grade' => $synthGrade,
-            ]));
-            $updated->refresh();
+            $updated = $this->service->applyDimScores($updated, $dims);
 
             $ra = app(RiskAutoDerivationService::class)->deriveFromSaqV2($updated, $dims);
         } else {
@@ -424,55 +417,13 @@ class SAQController extends Controller
             'llm_score_reason'    => ['nullable', 'string', 'max:500'],
         ]);
 
-        $pqId = $request->project_question_id;
-
-        $saq->responses()
-            ->where('project_question_id', $pqId)
-            ->update([
-                'llm_score'        => $request->llm_score,
-                'llm_score_reason' => $request->llm_score_reason,
-                'score_confidence' => 'medium',
-                // LLM 完成後重算 raw_score（answer_score = llm_score / 100）
-                'raw_score'        => \DB::raw("llm_score / 100.0 * (
-                    SELECT weight FROM project_questions WHERE id = '$pqId' LIMIT 1
-                )"),
-            ]);
+        $this->service->applyLlmScore(
+            $saq,
+            $request->project_question_id,
+            (float) $request->llm_score,
+            $request->llm_score_reason,
+        );
 
         return response()->json(['success' => true, 'message' => 'LLM 評分已寫入']);
-    }
-
-    /**
-     * 以六維度分數與 series.dim_weights 合成 0–100 總分。
-     * dim_eN 已為 0–100 scale（AI 端輸出），直接加權。
-     */
-    private function synthesizeDimScore(SAQ $saq, array $dims): float
-    {
-        $series = $saq->project?->series;
-        $weights = $series?->dim_weights
-            ?? app(SystemSettingsService::class)->getDimWeightDefaults();
-
-        $keys = ['E1'=>'dim_e1','E2'=>'dim_e2','E3'=>'dim_e3','E4'=>'dim_e4','E5'=>'dim_e5','E6'=>'dim_e6'];
-        $weightedSum = 0.0;
-        $weightTotal = 0.0;
-
-        foreach ($keys as $eKey => $dimKey) {
-            $val = $dims[$dimKey] ?? null;
-            $w   = $weights[$eKey] ?? 0;
-            if ($val !== null && $w > 0) {
-                $weightedSum += $val * $w;
-                $weightTotal += $w;
-            }
-        }
-
-        return $weightTotal > 0 ? round($weightedSum / $weightTotal, 2) : 0.0;
-    }
-
-    private function deriveGrade(float $score, array $thresholds): string
-    {
-        if ($score >= ($thresholds['A'] ?? 80.0)) return 'A';
-        if ($score >= ($thresholds['B'] ?? 60.0)) return 'B';
-        if ($score >= ($thresholds['C'] ?? 40.0)) return 'C';
-        if ($score >= ($thresholds['D'] ?? 20.0)) return 'D';
-        return 'E';
     }
 }

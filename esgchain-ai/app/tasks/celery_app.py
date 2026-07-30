@@ -8,6 +8,7 @@ celery_app = Celery(
     backend=settings.CELERY_RESULT_BACKEND,
     include=[
         "app.tasks.scoring_tasks",
+        "app.tasks.scope3_push_tasks",
     ],
 )
 
