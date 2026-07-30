@@ -255,6 +255,7 @@ export default defineComponent({
         impact: String(q.risk_impact),
       }
     }
+    if (q.tier) this.filters.tier = String(q.tier)
     // 與 compareStore 同步 selectedIds
     this.selectedIds = this.compareStore.suppliers.map(s => s.id)
     this.loadData()

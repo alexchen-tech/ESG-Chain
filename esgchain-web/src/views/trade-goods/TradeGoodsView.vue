@@ -376,6 +376,10 @@ export default defineComponent({
     },
   },
   async mounted() {
+    // 允許從儀表板等頁面帶 ?cbam=yes / ?eudr=yes 直接預設篩選條件
+    const q = this.$route.query
+    if (q.cbam === 'yes' || q.cbam === 'no') this.cbamFilter = q.cbam
+    if (q.eudr === 'yes' || q.eudr === 'no') this.eudrFilter = q.eudr
     await this.loadData()
     this.loadCustomers()
   },

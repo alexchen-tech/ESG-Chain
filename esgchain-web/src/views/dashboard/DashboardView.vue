@@ -40,23 +40,8 @@
         @update:period-year="onGhgCoverageYearChange"
       />
 
-      <!-- buyer: Tier 分布 -->
-      <DashboardSupplierTier v-if="role === 'buyer' || role === 'admin'" :distribution="tierDistribution" />
-
-      <!-- admin / 共用: 供應商狀態分布 -->
-      <div v-if="role === 'admin'" class="card">
-        <div class="card-title" style="margin-bottom:16px">供應商狀態分布</div>
-        <div v-if="isLoading" class="loading-mask">載入中...</div>
-        <div v-else>
-          <div v-for="item in statusDistribution" :key="item.status" class="status-row">
-            <span class="badge" :class="statusBadgeClass(item.status)">{{ statusLabel(item.status) }}</span>
-            <div class="status-bar-wrap">
-              <div class="status-bar" :style="{ width: (item.count / totalSuppliers * 100) + '%' }"></div>
-            </div>
-            <span class="font-mono" style="font-size:13px;min-width:30px;text-align:right">{{ item.count }}</span>
-          </div>
-        </div>
-      </div>
+      <!-- admin/buyer/sustain/comply: 供應商分析（層級＋活躍狀態彙總） -->
+      <DashboardSupplierAnalysis v-if="['admin', 'buyer', 'sustain', 'comply'].includes(role)" :suppliers="suppliers" />
     </div>
   </div>
 </template>
@@ -69,23 +54,18 @@ import { suppliersApi, type Supplier, supplierGhgCoverageApi, type SupplierGhgCo
 import { dashboardApi, type DashboardSummary, type RecentActivity, type ExpiringDoc, type ComplianceRisk } from '@/api/modules/dashboard'
 import { riskApi, type SixDimHeatmapRow } from '@/api/modules/risk'
 import type { EsgScores } from '@/components/dashboard/DashboardEsgScores.vue'
-import type { TierDistribution } from '@/components/dashboard/DashboardSupplierTier.vue'
 import DashboardActionCards from '@/components/dashboard/DashboardActionCards.vue'
 import DashboardRecentActivity from '@/components/dashboard/DashboardRecentActivity.vue'
 import DashboardExpiringDocs from '@/components/dashboard/DashboardExpiringDocs.vue'
 import DashboardComplianceRisk from '@/components/dashboard/DashboardComplianceRisk.vue'
 import DashboardEsgScores from '@/components/dashboard/DashboardEsgScores.vue'
-import DashboardSupplierTier from '@/components/dashboard/DashboardSupplierTier.vue'
+import DashboardSupplierAnalysis from '@/components/dashboard/DashboardSupplierAnalysis.vue'
 import DashboardSupplyChainMap from '@/components/dashboard/DashboardSupplyChainMap.vue'
 import DashboardGhgCoverageByGroup from '@/components/dashboard/DashboardGhgCoverageByGroup.vue'
 
 const ROLE_LABELS: Record<string, string> = {
   admin: '系統管理員', buyer: '採購商', sustain: '永續長',
   comply: '法遵', analyst: '分析師',
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  active: '啟用', inactive: '停用', suspended: '暫停',
 }
 
 export default defineComponent({
@@ -96,7 +76,7 @@ export default defineComponent({
     DashboardExpiringDocs,
     DashboardComplianceRisk,
     DashboardEsgScores,
-    DashboardSupplierTier,
+    DashboardSupplierAnalysis,
     DashboardSupplyChainMap,
     DashboardGhgCoverageByGroup,
   },
@@ -115,7 +95,6 @@ export default defineComponent({
       expiringDocs: [] as ExpiringDoc[],
       complianceRisk: null as ComplianceRisk | null,
       esgScores: null as EsgScores | null,
-      tierDistribution: null as TierDistribution | null,
       heatmapRows: [] as SixDimHeatmapRow[],
       ghgCoverageByGroup: null as SupplierGhgCoverageByGroup | null,
       ghgCoveragePeriodYear: null as number | null,
@@ -131,11 +110,6 @@ export default defineComponent({
     },
     showMap(): boolean {
       return ['sustain', 'comply', 'admin'].includes(this.role)
-    },
-    statusDistribution(): { status: string; count: number }[] {
-      const counts: Record<string, number> = {}
-      for (const s of this.suppliers) counts[s.status] = (counts[s.status] || 0) + 1
-      return Object.entries(counts).map(([status, count]) => ({ status, count })).sort((a, b) => b.count - a.count)
     },
   },
 
@@ -185,16 +159,11 @@ export default defineComponent({
           await this.loadGhgCoverageByGroup()
         }
 
-        if (this.role === 'admin' || this.role === 'buyer') {
+        if (['admin', 'buyer', 'sustain', 'comply'].includes(this.role)) {
           const suppliersRes = await suppliersApi.list({ per_page: 200 }).catch(() => null)
           if (suppliersRes) {
             this.suppliers = suppliersRes.data.data
             this.totalSuppliers = suppliersRes.data.pagination.total
-
-            const t1 = this.suppliers.filter(s => s.tier === 1).length
-            const t2 = this.suppliers.filter(s => s.tier === 2).length
-            const t3 = this.suppliers.filter(s => s.tier === 3).length
-            this.tierDistribution = { tier1: t1, tier2: t2, tier3: t3 }
           }
         }
 
@@ -213,13 +182,6 @@ export default defineComponent({
       this.ghgCoveragePeriodYear = year
       this.loadGhgCoverageByGroup()
     },
-    statusLabel(status: string): string {
-      return STATUS_LABELS[status] ?? status
-    },
-    statusBadgeClass(status: string): string {
-      const map: Record<string, string> = { active: 'badge-green', inactive: 'badge-gray', suspended: 'badge-red' }
-      return map[status] ?? 'badge-gray'
-    },
   },
 })
 </script>
@@ -230,7 +192,4 @@ export default defineComponent({
   grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
-.status-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-.status-bar-wrap { flex: 1; height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
-.status-bar { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.4s; }
 </style>
