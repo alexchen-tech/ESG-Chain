@@ -4,12 +4,14 @@ import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
+import NotificationBell from '@/components/layout/NotificationBell.vue'
+import { notificationsApi } from '@/api/modules/notifications'
 
 const NO_SIDEBAR_ROUTES = ['/login']
 
 export default defineComponent({
   name: 'App',
-  components: { AppSidebar },
+  components: { AppSidebar, NotificationBell },
   setup() {
     const route = useRoute()
     const auth = useAuthStore()
@@ -32,7 +34,7 @@ export default defineComponent({
       return uiStore.sidebarCollapsed ? '56px' : '220px'
     })
 
-    return { showSidebar, mainMargin, uiStore, isMobile }
+    return { showSidebar, mainMargin, uiStore, isMobile, notificationsApi }
   },
 })
 </script>
@@ -46,6 +48,9 @@ export default defineComponent({
       class="mobile-hamburger"
       @click="uiStore.openMobileSidebar()"
     >☰</button>
+    <div v-if="showSidebar" class="global-notif-bell">
+      <NotificationBell :api="notificationsApi" cap-list-path="/caps" />
+    </div>
     <main
       :class="showSidebar ? 'main-with-sidebar' : 'main-full'"
       :style="showSidebar ? { marginLeft: mainMargin } : {}"
@@ -59,6 +64,17 @@ export default defineComponent({
 .app-layout { display: flex; height: 100vh; overflow: hidden; }
 .main-with-sidebar { flex: 1; overflow-y: auto; background: var(--bg); transition: margin-left 0.25s ease; }
 .main-full { flex: 1; overflow-y: auto; background: var(--bg); }
+
+.global-notif-bell {
+  position: fixed;
+  top: 12px;
+  right: 20px;
+  z-index: 12;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
 
 .mobile-hamburger {
   position: fixed;

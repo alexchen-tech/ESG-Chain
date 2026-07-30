@@ -2,6 +2,8 @@
 import { defineComponent, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import NotificationBell from '@/components/layout/NotificationBell.vue'
+import { portalNotificationsApi } from '@/api/modules/portalNotifications'
 
 const NAV_ITEMS = [
   { to: '/supplier/portal', label: '供應商入口' },
@@ -20,6 +22,7 @@ const ROLE_LABELS: Record<string, string> = {
 
 export default defineComponent({
   name: 'AppPortal',
+  components: { NotificationBell },
   setup() {
     const route = useRoute()
     const router = useRouter()
@@ -33,7 +36,7 @@ export default defineComponent({
       router.push('/login')
     }
 
-    return { NAV_ITEMS, showNav, roleLabel, auth, logout }
+    return { NAV_ITEMS, showNav, roleLabel, auth, logout, portalNotificationsApi }
   },
 })
 </script>
@@ -52,6 +55,7 @@ export default defineComponent({
         >{{ item.label }}</router-link>
       </nav>
       <div class="portal-topbar-user">
+        <NotificationBell :api="portalNotificationsApi" cap-list-path="/supplier/portal/caps" dark />
         <span class="portal-topbar-username">{{ auth.user?.name }}</span>
         <span class="portal-topbar-role">{{ roleLabel }}</span>
         <button class="portal-topbar-logout" @click="logout">登出</button>

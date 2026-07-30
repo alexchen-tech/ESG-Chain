@@ -1,15 +1,19 @@
 <?php
 
-namespace App\Http\Controllers\Api\Portal;
+namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-class PortalNotificationController extends Controller
+/**
+ * 中心廠內部使用者（admin/buyer/sustain/comply/analyst）站內通知。
+ * 供應商 Portal 端另有 App\Http\Controllers\Api\Portal\PortalNotificationController，結構相同但路徑不同。
+ */
+class NotificationController extends Controller
 {
     /**
-     * GET /api/v1/portal/notifications
+     * GET /api/v1/notifications
      */
     public function index(Request $request): JsonResponse
     {
@@ -29,7 +33,7 @@ class PortalNotificationController extends Controller
     }
 
     /**
-     * GET /api/v1/portal/notifications/unread-count
+     * GET /api/v1/notifications/unread-count
      */
     public function unreadCount(Request $request): JsonResponse
     {
@@ -40,7 +44,7 @@ class PortalNotificationController extends Controller
     }
 
     /**
-     * POST /api/v1/portal/notifications/mark-read
+     * POST /api/v1/notifications/mark-read
      */
     public function markRead(Request $request): JsonResponse
     {
@@ -50,7 +54,7 @@ class PortalNotificationController extends Controller
     }
 
     /**
-     * POST /api/v1/portal/notifications/{id}/mark-read
+     * POST /api/v1/notifications/{id}/mark-read
      */
     public function markOneRead(Request $request, string $id): JsonResponse
     {
