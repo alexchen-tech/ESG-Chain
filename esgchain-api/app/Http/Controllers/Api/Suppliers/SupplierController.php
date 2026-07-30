@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api\Suppliers;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Suppliers\CreateSupplierRequest;
 use App\Models\RiskAssessment;
 use App\Models\Supplier;
 use App\Services\Suppliers\SupplierService;
@@ -59,17 +58,6 @@ class SupplierController extends Controller
         ]);
     }
 
-    public function store(CreateSupplierRequest $request): JsonResponse
-    {
-        $supplier = $this->service->create($request->validated(), $request->user()->id);
-
-        return response()->json([
-            'success' => true,
-            'data' => $supplier,
-            'message' => '供應商建立成功',
-        ], 201);
-    }
-
     public function show(Supplier $supplier): JsonResponse
     {
         return response()->json([
@@ -100,27 +88,6 @@ class SupplierController extends Controller
             'success' => true,
             'data' => $updated,
             'message' => '供應商更新成功',
-        ]);
-    }
-
-    public function transition(Request $request, Supplier $supplier): JsonResponse
-    {
-        $validated = $request->validate([
-            'status' => ['required', 'string', 'in:active,inactive'],
-            'reason' => ['nullable', 'string'],
-        ]);
-
-        $updated = $this->service->transitionStatus(
-            $supplier,
-            $validated['status'],
-            $validated['reason'] ?? null,
-            $request->user()->id
-        );
-
-        return response()->json([
-            'success' => true,
-            'data' => $updated,
-            'message' => '供應商狀態已更新',
         ]);
     }
 

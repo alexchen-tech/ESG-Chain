@@ -7,7 +7,6 @@
       </div>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-secondary" @click="$router.push('/suppliers/import')">↑ 批次匯入</button>
-        <button class="btn btn-primary" @click="openCreateModal">＋ 新增供應商</button>
       </div>
     </div>
 
@@ -77,7 +76,7 @@
               />
             </td>
             <td>
-              <div class="sup-name">{{ s.name }}</div>
+              <div class="sup-name">{{ maskSupplierName(s.name) }}</div>
               <div class="sup-meta">{{ s.industry || '—' }}</div>
             </td>
             <td><span class="font-mono sup-code">{{ s.code || '—' }}</span></td>
@@ -134,48 +133,6 @@
 
     <CompareModal v-if="showCompareModal" @close="showCompareModal = false" />
 
-    <!-- 新增 Modal -->
-    <div v-if="showCreateModal" class="modal-overlay" @click.self="showCreateModal = false">
-      <div class="modal">
-        <div class="modal-header">
-          <span class="modal-title">新增供應商</span>
-          <button class="modal-close" @click="showCreateModal = false">×</button>
-        </div>
-        <div class="form-group">
-          <label class="form-label">供應商名稱 *</label>
-          <input v-model="form.name" class="form-input" placeholder="公司全名" />
-        </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-          <div class="form-group">
-            <label class="form-label">代碼</label>
-            <input v-model="form.code" class="form-input" placeholder="SUP-001" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">層級</label>
-            <select v-model="form.tier" class="form-select">
-              <option :value="1">Tier 1</option>
-              <option :value="2">Tier 2</option>
-              <option :value="3">Tier 3</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">國家/地區</label>
-            <CountrySelect v-model="form.country_code" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">產業</label>
-            <input v-model="form.industry" class="form-input" placeholder="製造業" />
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" @click="showCreateModal = false">取消</button>
-          <button class="btn btn-primary" :disabled="isSubmitting" @click="createSupplier">
-            {{ isSubmitting ? '建立中...' : '建立' }}
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- 狀態流轉 Modal -->
     <div v-if="showTransitionModal" class="modal-overlay" @click.self="showTransitionModal = false">
       <div class="modal" style="min-width: 400px;">
@@ -184,7 +141,7 @@
           <button class="modal-close" @click="showTransitionModal = false">×</button>
         </div>
         <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 16px;">
-          {{ selectedSupplier?.name }} 當前狀態：
+          {{ maskSupplierName(selectedSupplier?.name) }} 當前狀態：
           <span class="badge" :class="statusBadgeClass(selectedSupplier?.onboarding_stage || '')">
             {{ statusLabel(selectedSupplier?.onboarding_stage || '') }}
           </span>
@@ -215,7 +172,6 @@
 import { defineComponent } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { suppliersApi, supplierGroupsApi, type Supplier, type SupplierGroup } from '@/api/modules/suppliers'
-import CountrySelect from '@/components/common/CountrySelect.vue'
 import { useCompareStore } from '@/stores/compareStore'
 import CompareModal from '@/components/CompareModal.vue'
 
@@ -231,7 +187,7 @@ const ONBOARDING_TRANSITIONS: Record<string, string[]> = {
 
 export default defineComponent({
   name: 'SuppliersView',
-  components: { CountrySelect, CompareModal },
+  components: { CompareModal },
   setup() { return { router: useRouter(), route: useRoute(), compareStore: useCompareStore() } },
 
   data() {
@@ -244,11 +200,9 @@ export default defineComponent({
       filters: { search: '', status: '', tier: '', country_code: '', supplier_group_id: '' },
       riskFilter: null as { dim: string; probability: string; impact: string } | null,
       selectedIds: [] as string[],
-      showCreateModal: false,
       showCompareModal: false,
       showTransitionModal: false,
       selectedSupplier: null as Supplier | null,
-      form: { name: '', code: '', tier: 1, country_code: '' as string | null, industry: '' },
       AXIS_TITLES: { axis1: 'ESG揭露', axis2: '治理成熟度', axis3: '地緣產業' } as Record<string, string>,
       transitionForm: { status: 'suspended', reason: '' },
     }
@@ -350,7 +304,6 @@ export default defineComponent({
     },
 
     goPage(page: number) { this.pagination.current_page = page; this.loadData() },
-    openCreateModal() { this.form = { name: '', code: '', tier: 1, country_code: null, industry: '' }; this.showCreateModal = true },
     openTransitionModal(s: Supplier) {
       this.selectedSupplier = s
       const next = (ONBOARDING_TRANSITIONS[s.onboarding_stage ?? ''] ?? [])[0] ?? ''
@@ -395,15 +348,6 @@ export default defineComponent({
         DE:'🇩🇪', CH:'🇨🇭', HK:'🇭🇰', KH:'🇰🇭', ET:'🇪🇹', LK:'🇱🇰', MM:'🇲🇲',
       }
       return flags[code] ?? '🏳'
-    },
-    async createSupplier() {
-      if (!this.form.name) return
-      this.isSubmitting = true
-      try {
-        await suppliersApi.create(this.form)
-        this.showCreateModal = false
-        this.loadData()
-      } finally { this.isSubmitting = false }
     },
     async doTransition() {
       if (!this.selectedSupplier) return

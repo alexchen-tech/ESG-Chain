@@ -3,7 +3,6 @@
 namespace App\Services\PCF;
 
 use App\Models\PcfSnapshot;
-use App\Models\ProductBomLine;
 use App\Models\SalesProduct;
 use Illuminate\Support\Facades\Log;
 
@@ -13,43 +12,17 @@ class PcfCalculationService
 
     public function __construct(
         private readonly MaterialEmissionService $emissionService,
+        private readonly PcfAiClient $aiClient,
     ) {
         $this->pcrService = app(PcrCalculationService::class);
     }
 
     /**
-     * 遍歷 BomLine，取 primary supplier 最佳碳排，計算各行小計，加總 total_pcf，判斷 iso14067_ready。
-     * 型態 B（child_sales_product_id）從子產品最新 PCF 快照取 total_pcf。
+     * 蒐集 BOM 行原始資料（取 primary supplier 最佳碳排、子產品最新 PCF），
+     * 不計算 subtotal / total_pcf / iso14067_ready / data_quality——那些交給 esgchain-ai。
+     * 輸出結構對應 esgchain-ai ProductPcfLineRequest。
      */
-    public function calcForProduct(SalesProduct $product): array
-    {
-        $lines         = $this->buildSnapshotLines($product);
-        $totalPcf      = 0.0;
-        $iso14067Ready = true;
-
-        foreach ($lines as $line) {
-            if ($line['emission_per_unit'] !== null) {
-                $totalPcf += $line['subtotal'] ?? 0.0;
-            } else {
-                $iso14067Ready = false;
-            }
-
-            if ($line['is_estimated'] || $line['emission_source'] === 'ai-estimated') {
-                $iso14067Ready = false;
-            }
-        }
-
-        return [
-            'total_pcf'      => $totalPcf > 0 ? $totalPcf : null,
-            'iso14067_ready' => $iso14067Ready && count($lines) > 0,
-            'lines'          => $lines,
-        ];
-    }
-
-    /**
-     * 產生 lines JSON 陣列，支援型態 A（material_item_id）與型態 B（child_sales_product_id）
-     */
-    public function buildSnapshotLines(SalesProduct $product): array
+    public function buildLineRequests(SalesProduct $product): array
     {
         $bomLines = $product->bomLines()
             ->with(['materialItem', 'childSalesProduct', 'bomLineSuppliers.supplier'])
@@ -60,27 +33,28 @@ class PcfCalculationService
         foreach ($bomLines as $bomLine) {
             // 型態 B：子銷售產品，從其最新 PCF 快照取碳強度
             if ($bomLine->child_sales_product_id) {
-                $childSnapshot = $bomLine->childSalesProduct?->latestPcfSnapshot();
+                $childSnapshot   = $bomLine->childSalesProduct?->latestPcfSnapshot();
                 $emissionPerUnit = $childSnapshot ? (float) $childSnapshot->total_pcf : null;
                 $quantity        = (float) ($bomLine->quantity ?? 1);
-                $subtotal        = $emissionPerUnit !== null ? $emissionPerUnit * $quantity : null;
 
                 $lines[] = [
-                    'bom_line_id'           => $bomLine->id,
-                    'child_sales_product_id' => $bomLine->child_sales_product_id,
-                    'material_name'          => $bomLine->childSalesProduct?->name ?? '',
-                    'hs_code'                => $bomLine->childSalesProduct?->hs_code,
-                    'supplier_id'            => null,
-                    'supplier_name'          => null,
-                    'quantity'               => $quantity,
-                    'unit'                   => $bomLine->unit ?? '件',
-                    'emission_per_unit'      => $emissionPerUnit,
-                    'subtotal'               => $subtotal,
-                    'emission_source'        => 'child-pcf',
-                    'is_estimated'           => false,
-                    'is_flagged'             => false,
-                    'reported_period'        => $childSnapshot?->snapshot_at?->toDateString(),
-                    'data_quality'           => $emissionPerUnit !== null ? 'primary' : 'missing',
+                    'bom_line_id'             => $bomLine->id,
+                    'line_type'               => 'component',
+                    'material_item_id'        => null,
+                    'child_sales_product_id'  => $bomLine->child_sales_product_id,
+                    'material_name'           => $bomLine->childSalesProduct?->name ?? '',
+                    'hs_code'                 => $bomLine->childSalesProduct?->hs_code,
+                    'supplier_id'             => null,
+                    'supplier_name'           => null,
+                    'quantity'                => $quantity,
+                    'unit'                    => $bomLine->unit ?? '件',
+                    'emission_per_unit'       => $emissionPerUnit,
+                    'emission_source'         => 'child-pcf',
+                    'is_estimated'            => false,
+                    'is_flagged'              => false,
+                    'reported_period'         => $childSnapshot?->snapshot_at?->toDateString(),
+                    'net_weight'              => null,
+                    'pcr_percentage'          => null,
                 ];
                 continue;
             }
@@ -105,24 +79,26 @@ class PcfCalculationService
 
             $emissionPerUnit = $emission ? (float) $emission->emissions_value : null;
             $quantity        = (float) ($bomLine->quantity ?? 1);
-            $subtotal        = $emissionPerUnit !== null ? $emissionPerUnit * $quantity : null;
+            $item            = $bomLine->materialItem;
 
             $lines[] = [
-                'bom_line_id'       => $bomLine->id,
-                'material_item_id'  => $bomLine->material_item_id,
-                'material_name'     => $bomLine->material_name ?? $bomLine->materialItem?->name,
-                'hs_code'           => $bomLine->hs_code ?? $bomLine->materialItem?->hs_code,
-                'supplier_id'       => $supplierId,
-                'supplier_name'     => $supplierName,
-                'quantity'          => $quantity,
-                'unit'              => $bomLine->unit ?? '件',
-                'emission_per_unit' => $emissionPerUnit,
-                'subtotal'          => $subtotal,
-                'emission_source'   => $emission?->source,
-                'is_estimated'      => $emission?->is_estimated ?? false,
-                'is_flagged'        => $emission?->is_flagged ?? false,
-                'reported_period'   => $emission?->reported_period,
-                'data_quality'      => $this->resolveDataQuality($emission?->source),
+                'bom_line_id'             => $bomLine->id,
+                'line_type'               => 'material',
+                'material_item_id'        => $bomLine->material_item_id,
+                'child_sales_product_id'  => null,
+                'material_name'           => $bomLine->material_name ?? $item?->name,
+                'hs_code'                 => $bomLine->hs_code ?? $item?->hs_code,
+                'supplier_id'             => $supplierId,
+                'supplier_name'           => $supplierName,
+                'quantity'                => $quantity,
+                'unit'                    => $bomLine->unit ?? '件',
+                'emission_per_unit'       => $emissionPerUnit,
+                'emission_source'         => $emission?->source,
+                'is_estimated'            => $emission?->is_estimated ?? false,
+                'is_flagged'              => $emission?->is_flagged ?? false,
+                'reported_period'         => $emission?->reported_period,
+                'net_weight'              => $item?->net_weight,
+                'pcr_percentage'          => $item?->pcr_percentage,
             ];
         }
 
@@ -130,33 +106,114 @@ class PcfCalculationService
     }
 
     /**
-     * append-only：每次呼叫建立新快照
+     * 舊版本機計算（型態 A/B 皆保留原邏輯），僅用於與 AI 回傳結果交叉驗證，不再是正式資料來源。
      */
-    public function snapshot(SalesProduct $product): PcfSnapshot
+    protected function legacyCalc(SalesProduct $product): array
     {
-        $result    = $this->calcForProduct($product);
-        $pcrResult = $this->pcrService->calcForProduct($product);
+        $lineRequests = $this->buildLineRequests($product);
+        $totalPcf     = 0.0;
+        $iso14067Ready = true;
+        $lines        = [];
 
-        $snapshot = PcfSnapshot::create([
-            'sales_product_id'     => $product->id,
-            'total_pcf'            => $result['total_pcf'],
-            'functional_unit'      => '件',
-            'iso14067_ready'       => $result['iso14067_ready'],
-            'lines'                => $result['lines'],
-            'pcr_ratio'            => $pcrResult['pcr_ratio'],
-            'pcr_incomplete_lines' => $pcrResult['incomplete_lines'],
-        ]);
+        foreach ($lineRequests as $line) {
+            $emissionPerUnit = $line['emission_per_unit'];
+            $subtotal        = $emissionPerUnit !== null ? $emissionPerUnit * $line['quantity'] : null;
 
-        return $snapshot;
+            if ($emissionPerUnit !== null) {
+                $totalPcf += $subtotal;
+            } else {
+                $iso14067Ready = false;
+            }
+
+            if ($line['is_estimated'] || $line['emission_source'] === 'ai-estimated') {
+                $iso14067Ready = false;
+            }
+
+            $line['subtotal']     = $subtotal;
+            $line['data_quality'] = $this->legacyDataQuality($line);
+            $lines[]              = $line;
+        }
+
+        return [
+            'total_pcf'      => $totalPcf > 0 ? $totalPcf : null,
+            'iso14067_ready' => $iso14067Ready && count($lines) > 0,
+            'lines'          => $lines,
+        ];
     }
 
-    private function resolveDataQuality(?string $source): string
+    private function legacyDataQuality(array $line): string
     {
-        return match ($source) {
+        if ($line['emission_source'] === 'child-pcf') {
+            return $line['emission_per_unit'] !== null ? 'primary' : 'missing';
+        }
+
+        return match ($line['emission_source']) {
             'portal-self'  => 'primary',
             'buyer-input'  => 'secondary',
             'ai-estimated' => 'estimated',
             default        => 'missing',
         };
+    }
+
+    /**
+     * append-only：每次呼叫建立新快照。實際計算改由 esgchain-ai 執行
+     * （CLAUDE.md：計算邏輯不可寫在 esgchain-api），legacyCalc() 僅作交叉驗證用。
+     */
+    public function snapshot(SalesProduct $product): PcfSnapshot
+    {
+        $lineRequests = $this->buildLineRequests($product);
+
+        $aiResult = $this->aiClient->calculate($product->id, '件', $lineRequests);
+
+        $legacyResult = $this->legacyCalc($product);
+        $legacyPcr    = $this->pcrService->calcForProduct($product);
+
+        $this->crossValidate($product, $aiResult, $legacyResult, $legacyPcr);
+
+        $snapshot = PcfSnapshot::create([
+            'sales_product_id'     => $product->id,
+            'total_pcf'            => $aiResult['total_pcf'] ?? null,
+            'functional_unit'      => $aiResult['functional_unit'] ?? '件',
+            'iso14067_ready'       => $aiResult['iso14067_ready'] ?? false,
+            'lines'                => $aiResult['lines'] ?? [],
+            'pcr_ratio'            => $aiResult['pcr_ratio'] ?? null,
+            'pcr_incomplete_lines' => $aiResult['pcr_incomplete_lines'] ?? null,
+        ]);
+
+        return $snapshot;
+    }
+
+    private function crossValidate(SalesProduct $product, array $aiResult, array $legacyResult, array $legacyPcr): void
+    {
+        $tolerance = 0.0001;
+
+        $newTotal = $aiResult['total_pcf'] ?? null;
+        $oldTotal = $legacyResult['total_pcf'] ?? null;
+        $totalDiffers = ($newTotal === null) !== ($oldTotal === null)
+            || ($newTotal !== null && $oldTotal !== null && abs($newTotal - $oldTotal) > $tolerance);
+
+        $newReady = (bool) ($aiResult['iso14067_ready'] ?? false);
+        $oldReady = (bool) ($legacyResult['iso14067_ready'] ?? false);
+
+        $newPcr = $aiResult['pcr_ratio'] ?? null;
+        $oldPcr = $legacyPcr['pcr_ratio'] ?? null;
+        $pcrDiffers = ($newPcr === null) !== ($oldPcr === null)
+            || ($newPcr !== null && $oldPcr !== null && abs($newPcr - $oldPcr) > $tolerance);
+
+        if ($totalDiffers || $newReady !== $oldReady || $pcrDiffers) {
+            Log::warning('PCF AI 計算結果與舊版本機計算不一致', [
+                'sales_product_id' => $product->id,
+                'new'              => [
+                    'total_pcf'      => $newTotal,
+                    'iso14067_ready' => $newReady,
+                    'pcr_ratio'      => $newPcr,
+                ],
+                'old'              => [
+                    'total_pcf'      => $oldTotal,
+                    'iso14067_ready' => $oldReady,
+                    'pcr_ratio'      => $oldPcr,
+                ],
+            ]);
+        }
     }
 }
