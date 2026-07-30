@@ -12,6 +12,7 @@ class SupplierDisclosureFieldSeeder extends Seeder
         $fields = [
             ['slug' => 'ghg.scope1_mt_co2e',                    'label' => 'Scope 1 溫室氣體排放量',        'data_type' => 'numeric',        'unit' => 'mt_co2e',           'period_type' => 'annual'],
             ['slug' => 'ghg.scope2_mt_co2e',                    'label' => 'Scope 2 溫室氣體排放量',        'data_type' => 'numeric',        'unit' => 'mt_co2e',           'period_type' => 'annual'],
+            ['slug' => 'ghg.scope3_mt_co2e',                    'label' => '範疇三排放量（噸CO2e）',        'data_type' => 'numeric',        'unit' => 'mt_co2e',           'period_type' => 'annual'],
             ['slug' => 'energy.total_kwh',                       'label' => '總用電量',                     'data_type' => 'numeric',        'unit' => 'kWh',               'period_type' => 'annual'],
             ['slug' => 'water.total_m3',                         'label' => '總用水量',                     'data_type' => 'numeric',        'unit' => 'm³',                'period_type' => 'annual'],
             ['slug' => 'safety.ltifr',                           'label' => '職業災害失能傷害頻率（LTIFR）', 'data_type' => 'numeric',        'unit' => 'per_million_hrs',   'period_type' => 'annual'],

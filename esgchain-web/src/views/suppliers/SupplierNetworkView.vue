@@ -23,7 +23,7 @@
     <div v-if="isLoadingProducts" class="loading-mask" style="padding:40px;text-align:center;">載入中...</div>
 
     <div v-else-if="!selectedProductId" class="empty-state">
-      <div class="empty-icon">🔗</div>
+      <div class="empty-state-icon">🔗</div>
       <p>請先選擇一個銷售產品</p>
     </div>
 
@@ -43,25 +43,23 @@
           </div>
 
           <div class="detail-panel">
-            <div v-if="!selectedNode" class="empty-hint">點選圖中的節點以查看詳情</div>
-            <template v-else>
-              <div class="detail-type-badge" :class="'badge-' + selectedNode.type">{{ typeLabel(selectedNode.type) }}</div>
-              <div class="detail-name">{{ selectedNode.label }}</div>
-              <div v-if="selectedNode.type === 'supplier'" class="detail-fields">
-                <div v-if="selectedNode.code">代碼：{{ selectedNode.code }}</div>
-                <div>供應商層級：{{ selectedNode.tier ? `T${selectedNode.tier}` : '未分級' }}</div>
-                <div v-if="selectedNode.country">國別：{{ selectedNode.country }}</div>
-                <button class="btn btn-primary btn-sm" style="margin-top:10px;" @click="goToSupplier(selectedNode)">
+            <div v-if="!panel" class="empty-hint">點選圖中的節點以查看詳情</div>
+            <div v-else :key="panel.id">
+              <div class="detail-type-badge" :class="'badge-' + panel.type">{{ panel.typeLabel }}</div>
+              <div class="detail-name">{{ panel.name }}</div>
+              <div v-if="panel.type === 'supplier'" class="detail-fields">
+                <div v-if="panel.code">代碼：{{ panel.code }}</div>
+                <div>供應商層級：{{ panel.tierLabel }}</div>
+                <div v-if="panel.country">國別：{{ panel.country }}</div>
+                <button class="btn btn-primary btn-sm" style="margin-top:10px;" @click="goToSupplierById(panel.id)">
                   查看供應商詳情
                 </button>
               </div>
               <div v-else class="detail-fields">
-                <div v-if="selectedNode.code">代碼：{{ selectedNode.code }}</div>
-                <div v-if="childMap[selectedNode.id]?.length">
-                  點選節點以{{ expandedIds.has(selectedNode.id) ? '收合' : '展開' }}下一層（共 {{ childMap[selectedNode.id]?.length ?? 0 }} 項）
-                </div>
+                <div v-if="panel.code">代碼：{{ panel.code }}</div>
+                <div v-if="panel.childHint">{{ panel.childHint }}</div>
               </div>
-            </template>
+            </div>
           </div>
         </div>
       </template>
@@ -75,6 +73,7 @@ import { useRouter } from 'vue-router'
 import cytoscape, { type Core } from 'cytoscape'
 import { supplierNetworkApi, type NetworkNode, type NetworkEdge } from '@/api/modules/supplierNetwork'
 import { salesProductApi, type SalesProduct } from '@/api/modules/salesProducts'
+import { maskSupplierName } from '@/utils/maskName'
 
 const TYPE_LABELS: Record<string, string> = {
   supplier: '供應商',
@@ -112,6 +111,45 @@ export default defineComponent({
       selectedNode: null as NetworkNode | null,
       cy: null as Core | null,
     }
+  },
+
+  computed: {
+    // 集中在這裡「安全地」把 selectedNode 轉成畫面要用的純字串/純值，
+    // 任何一個欄位算錯都不該讓整個面板連 type/name 都渲染不出來、卡在上一個節點的畫面。
+    panel(): {
+      id: string
+      type: string
+      typeLabel: string
+      name: string
+      code: string | null
+      tierLabel: string
+      country: string | null
+      childHint: string | null
+    } | null {
+      const node = this.selectedNode
+      if (!node) return null
+      try {
+        const children = this.childMap[node.id]
+        return {
+          id: node.id,
+          type: node.type,
+          typeLabel: this.typeLabel(node.type),
+          name: node.type === 'supplier' ? maskSupplierName(node.label) : node.label,
+          code: node.code ?? null,
+          tierLabel: node.tier ? `T${node.tier}` : '未分級',
+          country: node.country ?? null,
+          childHint: children?.length
+            ? `點選節點以${this.expandedIds.has(node.id) ? '收合' : '展開'}下一層（共 ${children.length} 項）`
+            : null,
+        }
+      } catch (e) {
+        console.error('[SupplierNetworkView] panel computed failed', e)
+        return {
+          id: node.id, type: node.type, typeLabel: node.type, name: node.label ?? '(無法顯示)',
+          code: null, tierLabel: '—', country: null, childHint: null,
+        }
+      }
+    },
   },
 
   async mounted() {
@@ -284,10 +322,11 @@ export default defineComponent({
     },
 
     nodeLabel(node: NetworkNode): string {
+      const label = node.type === 'supplier' ? maskSupplierName(node.label) : node.label
       const children = this.childMap[node.id]
-      if (!children || !children.length) return node.label
-      if (this.expandedIds.has(node.id)) return node.label
-      return `${node.label}（${children.length}）`
+      if (!children || !children.length) return label
+      if (this.expandedIds.has(node.id)) return label
+      return `${label}（${children.length}）`
     },
 
     ensureHeaderForColumn(colIndex: number) {
@@ -424,8 +463,9 @@ export default defineComponent({
       this.cy?.elements().removeClass('highlighted dimmed')
     },
 
-    goToSupplier(node: NetworkNode) {
-      if (node.ref_id) this.router.push(`/suppliers/${node.ref_id}`)
+    goToSupplierById(id: string) {
+      const node = this.nodesById[id]
+      if (node?.ref_id) this.router.push(`/suppliers/${node.ref_id}`)
     },
 
     typeLabel(t: string) { return TYPE_LABELS[t] ?? t },
