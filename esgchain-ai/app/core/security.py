@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Optional
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.core.config import settings
@@ -49,6 +49,26 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ) -> dict:
     return decode_token(credentials.credentials)
+
+
+def verify_internal_service(
+    x_internal_token: Optional[str] = Header(default=None, alias="X-Internal-Token"),
+) -> None:
+    """
+    純 server-to-server 內部端點守衛（無使用者 JWT，例如 esgchain-api 服務對服務呼叫、
+    Celery 內部觸發）。比對 esgchain-api 與 esgchain-ai 共用的 INTERNAL_SERVICE_TOKEN。
+    """
+    expected = settings.INTERNAL_SERVICE_TOKEN
+    if not expected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"error_code": "INTERNAL_TOKEN_NOT_CONFIGURED", "message": "內部服務金鑰未設定"},
+        )
+    if not x_internal_token or x_internal_token != expected:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error_code": "UNAUTHORIZED", "message": "內部服務驗證失敗"},
+        )
 
 
 def require_roles(*roles: str):

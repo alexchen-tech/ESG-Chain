@@ -60,7 +60,8 @@ class CircularityCalculationService
     {
         try {
             $aiUrl = rtrim(config('services.ai.url', env('AI_SERVICE_URL', 'http://esgchain-ai:8000')), '/');
-            $resp = Http::timeout(10)->post("{$aiUrl}/ai/v1/composition/calculate", [
+            $resp = Http::withHeaders(['X-Internal-Token' => config('services.ai.internal_token')])
+                ->timeout(10)->post("{$aiUrl}/ai/v1/composition/calculate", [
                 'sales_product_id' => $salesProductId,
                 'lines'            => $lines->values()->all(),
             ]);

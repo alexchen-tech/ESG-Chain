@@ -28,5 +28,11 @@ class Settings(BaseSettings):
 
     ANTHROPIC_API_KEY: str = ""
 
+    # esgchain-api（Laravel）內部回呼位址，供 Celery 任務回寫結果使用
+    LARAVEL_INTERNAL_URL: str = "http://esgchain-api:8080"
+
+    # esgchain-api → esgchain-ai server-to-server 呼叫共用密鑰（純內部呼叫、無使用者 JWT 的端點用此驗證）
+    INTERNAL_SERVICE_TOKEN: str = ""
+
 
 settings = Settings()

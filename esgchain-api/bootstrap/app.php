@@ -18,6 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'erp.hmac'      => \App\Http\Middleware\VerifyErpHmacSignature::class,
             'export.apikey' => \App\Http\Middleware\VerifyExportApiKey::class,
             'supplier.scope' => \App\Http\Middleware\EnsureSupplierPortalScope::class,
+            'role.admin'      => \App\Http\Middleware\EnsureAdminRole::class,
+            'role.any'        => \App\Http\Middleware\EnsureAnyRole::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

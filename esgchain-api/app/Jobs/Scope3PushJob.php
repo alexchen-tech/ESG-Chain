@@ -24,7 +24,8 @@ class Scope3PushJob implements ShouldQueue
         $timeout   = (int) config('services.ai.timeout', 120);
 
         try {
-            Http::timeout($timeout)->post("{$aiUrl}/ai/v1/celery/scope3-push", [
+            Http::withHeaders(['X-Internal-Token' => config('services.ai.internal_token')])
+                ->timeout($timeout)->post("{$aiUrl}/ai/v1/celery/scope3-push", [
                 'report_id' => $this->reportId,
             ]);
         } catch (\Throwable $e) {

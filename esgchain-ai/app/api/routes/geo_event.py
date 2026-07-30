@@ -3,9 +3,10 @@
 """
 from datetime import timezone, datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from app.core.security import verify_internal_service
 from app.tasks.geo_event_tasks import recalculate_e4_batch
 
 router = APIRouter(prefix="/geo-event", tags=["geo-event"])
@@ -18,10 +19,12 @@ class RecalculateE4Request(BaseModel):
     country_defense_score_overrides: dict[str, float] | None = None
 
 
-@router.post("/recalculate-e4", status_code=202)
+@router.post("/recalculate-e4", status_code=202, dependencies=[Depends(verify_internal_service)])
 async def dispatch_recalculate_e4(request: RecalculateE4Request):
     """
     接收地緣事件批次 E4 重算請求，立即 enqueue Celery task，回傳 202。
+    僅供 esgchain-api 內部 server-to-server 呼叫（X-Internal-Token 驗證），
+    避免外部呼叫者任意指定 callback_url 造成 SSRF。
     """
     recalculate_e4_batch.delay(
         geo_event_id=request.geo_event_id,

@@ -130,7 +130,8 @@ class ImpactScoreService
     {
         try {
             $aiUrl = rtrim(config('services.ai.url', env('AI_SERVICE_URL', 'http://esgchain-ai:8000')), '/');
-            $resp  = Http::timeout(10)->post("{$aiUrl}/ai/v1/impact-scoring", $payload);
+            $resp  = Http::withHeaders(['X-Internal-Token' => config('services.ai.internal_token')])
+                ->timeout(10)->post("{$aiUrl}/ai/v1/impact-scoring", $payload);
 
             if ($resp->successful()) {
                 $score = $resp->json('impact_score');

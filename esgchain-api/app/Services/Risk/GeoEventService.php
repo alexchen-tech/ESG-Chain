@@ -95,10 +95,11 @@ class GeoEventService
 
         $supplierIds = $pendingReviews->pluck('supplier_id')->all();
 
-        $aiUrl = rtrim(config('services.esgchain_ai.url', 'http://esgchain-ai:8000'), '/');
+        $aiUrl = rtrim(config('services.ai.url', config('services.esgchain_ai.url', 'http://esgchain-ai:8000')), '/');
 
         try {
-            Http::timeout(10)->post("{$aiUrl}/ai/v1/geo-event/recalculate-e4", [
+            Http::withHeaders(['X-Internal-Token' => config('services.ai.internal_token')])
+                ->timeout(10)->post("{$aiUrl}/ai/v1/geo-event/recalculate-e4", [
                 'geo_event_id' => $event->id,
                 'supplier_ids' => $supplierIds,
                 'callback_url' => url("/api/v1/risk/geo-events/{$event->id}/review-callback"),
