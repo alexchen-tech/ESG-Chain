@@ -47,8 +47,10 @@ class EnsureSupplierPortalScope
         'GET|HEAD portal/caps',
         'GET|HEAD portal/caps/{cap}',
         'POST portal/caps/{cap}/update',
+        'GET|HEAD portal/notifications',
         'GET|HEAD portal/notifications/unread-count',
         'POST portal/notifications/mark-read',
+        'POST portal/notifications/{id}/mark-read',
 
         'POST caps/{cap}/attachments',
         'GET|HEAD cap-attachments/{attachment}/download',
@@ -56,6 +58,7 @@ class EnsureSupplierPortalScope
 
         'GET|HEAD suppliers/{supplier}/compliance-docs',
         'POST suppliers/{supplier}/compliance-docs',
+        'GET|HEAD compliance-docs/{complianceDoc}/download',
 
         'PUT suppliers/{supplier}/profile',
 

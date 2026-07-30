@@ -92,6 +92,7 @@ def score_text_response(
                 "llm_score_reason": llm_reason,
             },
             timeout=15,
+            headers={"X-Internal-Token": os.getenv("INTERNAL_SERVICE_TOKEN", "")},
         )
         resp.raise_for_status()
         logger.info("LLM score callback success for %s/%s → %d", saq_id, project_question_id, llm_score)

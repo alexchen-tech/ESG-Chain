@@ -1,5 +1,8 @@
 import logging
+import os
 import requests
+
+_INTERNAL_TOKEN_HEADER = {"X-Internal-Token": os.getenv("INTERNAL_SERVICE_TOKEN", "")}
 
 from app.tasks.celery_app import celery_app
 
@@ -89,7 +92,7 @@ def calculate_saq_score(
                 callback_url,
                 json=payload,
                 timeout=10,
-                headers={"Content-Type": "application/json"},
+                headers={"Content-Type": "application/json", **_INTERNAL_TOKEN_HEADER},
             )
 
         # E4 三路徑混合計分（有 country_defense_score 時覆寫 dim_e4）

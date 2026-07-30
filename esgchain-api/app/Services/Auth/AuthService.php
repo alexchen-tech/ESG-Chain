@@ -72,7 +72,7 @@ class AuthService
 
     public function logout(): void
     {
-        // 從 JWT 取得 jti 並從 Redis 刪除
+        // 從 JWT 取得 jti 並從 Redis 刪除（讓 refresh token 失效）
         try {
             $payload = JWTAuth::parseToken()->getPayload();
             $jti = $payload->get('jti');
@@ -81,6 +81,15 @@ class AuthService
             }
         } catch (\Throwable) {
             // jti 找不到也沒關係
+        }
+
+        // 明確將目前這支 access token 加入 blacklist，確保登出後立即失效，
+        // 不用等到自然過期（Auth::guard('api')->logout() 內部雖然也會嘗試 invalidate，
+        // 但遇到例外會靜默吞掉繼續走完登出流程，不能保證真的有把 token 拉黑）
+        try {
+            JWTAuth::parseToken()->invalidate();
+        } catch (\Throwable) {
+            // token 已經失效或解析失敗，登出流程仍視為成功
         }
 
         Auth::guard('api')->logout();

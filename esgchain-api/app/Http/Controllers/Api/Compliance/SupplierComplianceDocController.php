@@ -87,8 +87,19 @@ class SupplierComplianceDocController extends Controller
         return response()->json(['success' => true, 'message' => '文件已刪除']);
     }
 
-    public function download(SupplierComplianceDoc $complianceDoc): mixed
+    public function download(Request $request, SupplierComplianceDoc $complianceDoc): mixed
     {
+        $user = $request->user();
+        $isAdmin = $user->hasRole('admin');
+
+        if (!$isAdmin) {
+            abort_if(
+                (in_array('supplier', $user->getRoleNames()->toArray()) || in_array('sup_esg', $user->getRoleNames()->toArray()))
+                    && $user->supplier_id !== $complianceDoc->supplier_id,
+                403
+            );
+        }
+
         $path = $complianceDoc->file_path;
         if (!$path || !Storage::disk('local')->exists($path)) {
             return response()->json(['success' => false, 'message' => '文件不存在'], 404);

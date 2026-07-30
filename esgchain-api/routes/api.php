@@ -84,10 +84,10 @@ use App\Http\Controllers\Api\SalesProducts\ProductBatterySpecController;
 
 Route::prefix('v1')->group(function () {
 
-    // 認證（不需要 JWT）
+    // 認證（不需要 JWT）；login 加上速率限制防暴力破解（每分鐘 5 次，依 IP+email 組合計算）
     Route::prefix('auth')->group(function () {
-        Route::post('/login', [AuthController::class, 'login']);
-        Route::post('/refresh', [AuthController::class, 'refresh']);
+        Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
+        Route::post('/refresh', [AuthController::class, 'refresh'])->middleware('throttle:10,1');
     });
 
     // ERP Webhook（不使用 JWT，改用 HMAC / API Key 驗證）
@@ -97,39 +97,41 @@ Route::prefix('v1')->group(function () {
     // 批次護照對外 API（DPP / 出口合規系統對接；X-Api-Key 認證）
     Route::get('export/batch-package/{erpBatchNo}', [\App\Http\Controllers\Api\Export\BatchPackageController::class, 'show'])->middleware('export.apikey');
 
-    // 內部回寫端點（Celery 呼叫，無 JWT）
-    Route::patch('internal/activity-reports/{report}/push-result', function (\Illuminate\Http\Request $req, \App\Models\ActivityDataReport $report) {
-        $report->update(['push_log' => $req->input('push_log')]);
-        return response()->json(['success' => true]);
+    // 內部回寫端點（Celery 呼叫，無 JWT，改用 X-Internal-Token 共用密鑰驗證）
+    Route::middleware('internal.token')->group(function () {
+        Route::patch('internal/activity-reports/{report}/push-result', function (\Illuminate\Http\Request $req, \App\Models\ActivityDataReport $report) {
+            $report->update(['push_log' => $req->input('push_log')]);
+            return response()->json(['success' => true]);
+        });
+
+        // Celery 地緣事件 E4 重算回調
+        Route::post('risk/geo-events/{geoEvent}/review-callback', [GeoEventController::class, 'reviewCallback']);
+
+        Route::post('internal/chemicals/sync', function (\Illuminate\Http\Request $req) {
+            $chemicals = $req->input('chemicals', []);
+            $count = 0;
+            foreach ($chemicals as $c) {
+                if (empty($c['cas_no'])) continue;
+                \App\Models\Chemical::updateOrCreate(
+                    ['cas_no' => $c['cas_no']],
+                    array_filter([
+                        'substance_name'    => $c['substance_name'] ?? null,
+                        'iupac_name'        => $c['iupac_name'] ?? null,
+                        'regulated_lists'   => $c['regulated_lists'] ?? null,
+                        'restriction_notes' => $c['restriction_notes'] ?? null,
+                        'svhc_date'         => $c['svhc_date'] ?? null,
+                        'synced_at'         => $c['synced_at'] ?? now(),
+                    ], fn ($v) => $v !== null)
+                );
+                $count++;
+            }
+            return response()->json(['success' => true, 'upserted' => $count]);
+        });
+
+        // SAQ 計分回寫（AI Celery 呼叫）
+        Route::post('internal/saqs/{saq}/score-callback', [\App\Http\Controllers\Api\SAQ\SAQController::class, 'scoreCallback']);
+        Route::post('internal/saqs/{saq}/llm-score-callback', [\App\Http\Controllers\Api\SAQ\SAQController::class, 'llmScoreCallback']);
     });
-
-    // Celery 地緣事件 E4 重算回調（無 JWT，內部呼叫）
-    Route::post('risk/geo-events/{geoEvent}/review-callback', [GeoEventController::class, 'reviewCallback']);
-
-    Route::post('internal/chemicals/sync', function (\Illuminate\Http\Request $req) {
-        $chemicals = $req->input('chemicals', []);
-        $count = 0;
-        foreach ($chemicals as $c) {
-            if (empty($c['cas_no'])) continue;
-            \App\Models\Chemical::updateOrCreate(
-                ['cas_no' => $c['cas_no']],
-                array_filter([
-                    'substance_name'    => $c['substance_name'] ?? null,
-                    'iupac_name'        => $c['iupac_name'] ?? null,
-                    'regulated_lists'   => $c['regulated_lists'] ?? null,
-                    'restriction_notes' => $c['restriction_notes'] ?? null,
-                    'svhc_date'         => $c['svhc_date'] ?? null,
-                    'synced_at'         => $c['synced_at'] ?? now(),
-                ], fn ($v) => $v !== null)
-            );
-            $count++;
-        }
-        return response()->json(['success' => true, 'upserted' => $count]);
-    });
-
-    // SAQ 計分回寫（AI Celery 呼叫，無 JWT）
-    Route::post('internal/saqs/{saq}/score-callback', [\App\Http\Controllers\Api\SAQ\SAQController::class, 'scoreCallback']);
-    Route::post('internal/saqs/{saq}/llm-score-callback', [\App\Http\Controllers\Api\SAQ\SAQController::class, 'llmScoreCallback']);
 
     // 需要 JWT 認證的路由
     Route::middleware(['auth:api', 'supplier.scope'])->group(function () {
@@ -189,11 +191,11 @@ Route::prefix('v1')->group(function () {
 
         // saq-scoring-v2：題目層覆核 & 計分快照 & 申訴流程（寫入動作排除 buyer）
         Route::post('saqs/{saq}/response-reviews', [SAQController::class, 'submitResponseReviews'])->middleware('role.any:admin,sustain,comply,analyst');
-        Route::get('saqs/{saq}/response-reviews', [SAQController::class, 'getResponseReviews']);
-        Route::get('saqs/{saq}/score-snapshots', [SAQController::class, 'getScoreSnapshots']);
+        Route::get('saqs/{saq}/response-reviews', [SAQController::class, 'getResponseReviews'])->middleware('role.any:admin,sustain,comply,analyst');
+        Route::get('saqs/{saq}/score-snapshots', [SAQController::class, 'getScoreSnapshots'])->middleware('role.any:admin,sustain,comply,analyst');
         Route::post('saqs/{saq}/re-review', [SAQController::class, 'startReReview'])->middleware('role.any:admin,sustain,comply,analyst');
         Route::post('saqs/{saq}/finalize', [SAQController::class, 'finalize'])->middleware('role.any:admin,sustain,comply,analyst');
-        Route::get('saqs/{saq}/prefill-hints', [SAQController::class, 'prefillHints']);
+        Route::get('saqs/{saq}/prefill-hints', [SAQController::class, 'prefillHints'])->middleware('role.any:admin,sustain,comply,analyst');
 
         // M3 Risk（spec v2.1.0）
         Route::get('risk/matrix', [RiskMatrixController::class, 'matrix']);
@@ -496,8 +498,16 @@ Route::prefix('v1')->group(function () {
         Route::post('portal/caps/{cap}/update', [\App\Http\Controllers\Api\Portal\PortalCapController::class, 'addUpdate']);
 
         // 站內通知 - Portal
+        Route::get('portal/notifications', [\App\Http\Controllers\Api\Portal\PortalNotificationController::class, 'index']);
         Route::get('portal/notifications/unread-count', [\App\Http\Controllers\Api\Portal\PortalNotificationController::class, 'unreadCount']);
         Route::post('portal/notifications/mark-read', [\App\Http\Controllers\Api\Portal\PortalNotificationController::class, 'markRead']);
+        Route::post('portal/notifications/{id}/mark-read', [\App\Http\Controllers\Api\Portal\PortalNotificationController::class, 'markOneRead']);
+
+        // 中心廠內部使用者站內通知
+        Route::get('notifications', [\App\Http\Controllers\Api\NotificationController::class, 'index']);
+        Route::get('notifications/unread-count', [\App\Http\Controllers\Api\NotificationController::class, 'unreadCount']);
+        Route::post('notifications/mark-read', [\App\Http\Controllers\Api\NotificationController::class, 'markRead']);
+        Route::post('notifications/{id}/mark-read', [\App\Http\Controllers\Api\NotificationController::class, 'markOneRead']);
 
 
         // 活動資料層 - 中心廠端跨供應商彙總儀表板

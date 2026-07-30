@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'supplier.scope' => \App\Http\Middleware\EnsureSupplierPortalScope::class,
             'role.admin'      => \App\Http\Middleware\EnsureAdminRole::class,
             'role.any'        => \App\Http\Middleware\EnsureAnyRole::class,
+            'internal.token'  => \App\Http\Middleware\VerifyInternalServiceToken::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

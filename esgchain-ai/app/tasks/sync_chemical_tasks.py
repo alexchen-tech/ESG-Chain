@@ -62,6 +62,7 @@ def _push_to_laravel(chemicals: list[dict]) -> dict:
         resp = client.post(
             f"{LARAVEL_INTERNAL_URL}/api/v1/internal/chemicals/sync",
             json=payload,
+            headers={"X-Internal-Token": os.getenv("INTERNAL_SERVICE_TOKEN", "")},
         )
         resp.raise_for_status()
         return resp.json()

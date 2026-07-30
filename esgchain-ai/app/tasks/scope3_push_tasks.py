@@ -41,7 +41,12 @@ def scope3_push(self, report_id: str):
     # 回寫 Laravel
     try:
         api_url = f"{settings.LARAVEL_INTERNAL_URL}/api/v1/internal/activity-reports/{report_id}/push-result"
-        httpx.patch(api_url, json={"push_log": push_log}, timeout=10)
+        httpx.patch(
+            api_url,
+            json={"push_log": push_log},
+            timeout=10,
+            headers={"X-Internal-Token": settings.INTERNAL_SERVICE_TOKEN},
+        )
     except Exception:
         pass
 

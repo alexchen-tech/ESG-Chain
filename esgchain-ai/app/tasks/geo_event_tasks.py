@@ -76,7 +76,12 @@ def recalculate_e4_batch(
             "results": results,
             "completed_at": datetime.now(timezone.utc).isoformat(),
         }
-        requests.post(callback_url, json=payload, timeout=30)
+        requests.post(
+            callback_url,
+            json=payload,
+            timeout=30,
+            headers={"X-Internal-Token": os.getenv("INTERNAL_SERVICE_TOKEN", "")},
+        )
 
         return {"geo_event_id": geo_event_id, "processed": len(results)}
 
