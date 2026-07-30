@@ -15,7 +15,7 @@
 
     <!-- 篩選列 -->
     <div class="filter-bar">
-      <input v-model="search" class="form-input" style="width:220px;" placeholder="搜尋品項名稱 / HS Code" />
+      <input v-model="search" class="form-input" style="width:220px;" placeholder="搜尋品項名稱 / HS Code" @keyup.enter="resetAndLoad" />
       <select v-model="targetMarketFilter" class="form-select" @change="onMarketFilterChange">
         <option value="">目標市場（合規檢查）</option>
         <option value="EU">EU</option>
@@ -27,22 +27,23 @@
       </select>
       <span v-if="marketComplianceLoading" class="compliance-loading">檢查中…</span>
       <template v-if="!targetMarketFilter">
-        <select v-model="cbamFilter" class="form-select">
+        <select v-model="cbamFilter" class="form-select" @change="resetAndLoad">
           <option value="all">全部 CBAM</option>
           <option value="yes">CBAM 適用</option>
           <option value="no">非 CBAM</option>
         </select>
-        <select v-model="eudrFilter" class="form-select">
+        <select v-model="eudrFilter" class="form-select" @change="resetAndLoad">
           <option value="all">全部 EUDR</option>
           <option value="yes">EUDR 適用</option>
           <option value="no">非 EUDR</option>
         </select>
       </template>
+      <button class="btn btn-secondary btn-sm" @click="resetAndLoad">搜尋</button>
     </div>
 
     <!-- 品項清單 -->
     <div v-if="isLoading" class="card empty-state">載入中…</div>
-    <div v-else-if="!filteredGoods.length" class="card empty-state">
+    <div v-else-if="!goods.length" class="card empty-state">
       <div class="empty-icon">📦</div>
       <div>尚無貿易商品</div>
       <div class="empty-hint">點選右上角「新增品項」，輸入 HS Code 後系統自動判定 CBAM 適用性</div>
@@ -60,7 +61,7 @@
         <div class="good-actions-spacer"></div>
       </div>
       <div
-        v-for="g in filteredGoods"
+        v-for="g in goods"
         :key="g.id"
         class="good-card"
       >
@@ -147,7 +148,7 @@
                 <thead><tr><th>供應商</th><th>物料群組</th><th>合規狀態</th><th>文件明細</th></tr></thead>
                 <tbody>
                   <tr v-for="s in suppliers[g.id]" :key="s.supplier_id">
-                    <td>{{ s.supplier_name }}</td>
+                    <td>{{ maskSupplierName(s.supplier_name) }}</td>
                     <td>{{ s.material_group || '—' }}</td>
                     <td><span class="status-dot" :class="`status-dot--${s.status}`"></span> {{ STATUS_LABELS[s.status] }}</td>
                     <td>
@@ -206,7 +207,7 @@
                 <thead><tr><th>供應商</th><th>kgCO₂e/unit</th><th>計算說明</th><th>回報時間</th><th>確認狀態</th><th></th></tr></thead>
                 <tbody>
                   <tr v-for="e in emissions[g.id]" :key="e.id">
-                    <td>{{ e.supplier?.name }}</td>
+                    <td>{{ maskSupplierName(e.supplier?.name) }}</td>
                     <td class="font-mono">{{ e.emissions_value.toFixed(4) }}</td>
                     <td>{{ e.calculation_note || '—' }}</td>
                     <td class="font-mono" style="font-size:11px;">{{ e.reported_at?.slice(0,16) }}</td>
@@ -231,6 +232,13 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- 分頁 -->
+    <div class="pagination">
+      <span>第 {{ pagination.current_page }} / {{ pagination.last_page }} 頁</span>
+      <button class="pg-btn" :disabled="pagination.current_page <= 1" @click="goPage(pagination.current_page - 1)">‹</button>
+      <button class="pg-btn" :disabled="pagination.current_page >= pagination.last_page" @click="goPage(pagination.current_page + 1)">›</button>
     </div>
 
     <!-- 新增 / 編輯 Modal -->
@@ -312,6 +320,7 @@
 import { defineComponent } from 'vue'
 import { tradeGoodApi, marketComplianceApi, type TradeGood, type EmissionReport, type MarketComplianceResult } from '@/api/modules/tradeGoods'
 import { customersApi, type Customer } from '@/api/modules/customers'
+import { maskSupplierName } from '@/utils/maskName'
 
 const STATUS_LABELS: Record<string, string> = {
   valid: '合規', expiring_soon: '即將到期', expired: '已過期',
@@ -343,6 +352,7 @@ export default defineComponent({
       marketComplianceLoading: false,
       expandedCompliance: {} as Record<string, boolean>,
       goods: [] as TradeGood[],
+      pagination: { current_page: 1, per_page: 20, total: 0, last_page: 1 },
       allCustomers: [] as Customer[],
       showModal: false,
       editingGood: null as TradeGood | null,
@@ -361,18 +371,6 @@ export default defineComponent({
     }
   },
   computed: {
-    filteredGoods(): TradeGood[] {
-      let list = this.goods
-      if (this.search) {
-        const kw = this.search.toLowerCase()
-        list = list.filter(g => g.name.toLowerCase().includes(kw) || g.hs_code.includes(kw) || (g.product_code ?? '').toLowerCase().includes(kw))
-      }
-      if (this.cbamFilter === 'yes') list = list.filter(g => g.is_cbam_applicable)
-      if (this.cbamFilter === 'no')  list = list.filter(g => !g.is_cbam_applicable)
-      if (this.eudrFilter === 'yes') list = list.filter(g => g.is_eudr_applicable)
-      if (this.eudrFilter === 'no')  list = list.filter(g => !g.is_eudr_applicable)
-      return list
-    },
     cbamPreview() {
       return checkCbam(this.form.hs_code)
     },
@@ -382,13 +380,26 @@ export default defineComponent({
     this.loadCustomers()
   },
   methods: {
+    maskSupplierName,
+
     async loadData() {
       this.isLoading = true
       try {
-        const { data } = await tradeGoodApi.list()
+        const { data } = await tradeGoodApi.list({
+          page: this.pagination.current_page,
+          per_page: this.pagination.per_page,
+          q: this.search || undefined,
+          cbam: this.cbamFilter !== 'all' ? this.cbamFilter : undefined,
+          eudr: this.eudrFilter !== 'all' ? this.eudrFilter : undefined,
+        })
         this.goods = data.data
+        this.pagination = data.pagination
       } finally { this.isLoading = false }
     },
+
+    resetAndLoad() { this.pagination.current_page = 1; this.loadData() },
+    goPage(page: number) { this.pagination.current_page = page; this.loadData() },
+
     async loadCustomers() {
       try {
         const { data } = await customersApi.list({ per_page: 200, status: 'active' })

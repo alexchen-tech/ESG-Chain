@@ -15,23 +15,24 @@
 
     <!-- 篩選列 -->
     <div class="filter-bar">
-      <input v-model="search" class="filter-input" style="width:220px;" placeholder="搜尋品項 / SKU / 型號 / 生產批號 / HS" @input="onSearch" />
-      <select v-model="cbamFilter" class="filter-select">
+      <input v-model="search" class="filter-input" style="width:220px;" placeholder="搜尋品項 / SKU / 型號 / 生產批號 / HS" @keyup.enter="resetAndLoad" />
+      <select v-model="cbamFilter" class="filter-select" @change="resetAndLoad">
         <option value="all">CBAM：全部</option>
         <option value="yes">CBAM 適用</option>
         <option value="no">非 CBAM</option>
       </select>
-      <select v-model="eudrFilter" class="filter-select">
+      <select v-model="eudrFilter" class="filter-select" @change="resetAndLoad">
         <option value="all">EUDR：全部</option>
         <option value="yes">EUDR 適用</option>
         <option value="no">非 EUDR</option>
       </select>
-      <button v-if="search || cbamFilter !== 'all' || eudrFilter !== 'all'" class="btn btn-secondary btn-sm" @click="search=''; cbamFilter='all'; eudrFilter='all'">✕ 清除</button>
+      <button class="btn btn-secondary btn-sm" @click="resetAndLoad">搜尋</button>
+      <button v-if="search || cbamFilter !== 'all' || eudrFilter !== 'all'" class="btn btn-secondary btn-sm" @click="search=''; cbamFilter='all'; eudrFilter='all'; resetAndLoad()">✕ 清除</button>
     </div>
 
     <!-- 清單 -->
     <div v-if="isLoading" class="empty-state" style="padding:60px 0;text-align:center;color:var(--text-secondary);">載入中…</div>
-    <div v-else-if="!filteredProducts.length" class="empty-state" style="padding:60px 0;text-align:center;color:var(--text-secondary);">
+    <div v-else-if="!products.length" class="empty-state" style="padding:60px 0;text-align:center;color:var(--text-secondary);">
       <div style="font-size:28px;margin-bottom:12px;">📦</div>
       <p style="font-size:15px;font-weight:600;margin-bottom:6px;">尚無銷售產品</p>
       <p style="font-size:13px;opacity:0.75;">請使用右上角「CSV 批次匯入」從 ERP 匯出檔案建立產品，或透過 ERP Webhook 自動同步</p>
@@ -48,7 +49,7 @@
         <div class="good-actions-spacer"></div>
       </div>
 
-      <div v-for="p in filteredProducts" :key="p.id" class="good-card">
+      <div v-for="p in products" :key="p.id" class="good-card">
         <div class="good-row" @click="$router.push(`/sales-products/${p.id}`)">
           <div class="good-name-col">
             <div class="good-name">{{ p.name }}</div>
@@ -94,6 +95,13 @@
           <div class="row-arrow">›</div>
         </div>
       </div>
+    </div>
+
+    <!-- 分頁 -->
+    <div class="pagination">
+      <span>第 {{ pagination.current_page }} / {{ pagination.last_page }} 頁</span>
+      <button class="pg-btn" :disabled="pagination.current_page <= 1" @click="goPage(pagination.current_page - 1)">‹</button>
+      <button class="pg-btn" :disabled="pagination.current_page >= pagination.last_page" @click="goPage(pagination.current_page + 1)">›</button>
     </div>
 
     <!-- 編輯 Modal（僅限 ESG-Chain 擁有欄位，ERP 同步欄位唯讀）-->
@@ -210,6 +218,7 @@ export default defineComponent({
       cbamFilter: 'all',
       eudrFilter: 'all',
       products: [] as SalesProduct[],
+      pagination: { current_page: 1, per_page: 20, total: 0, last_page: 1 },
       allCustomers: [] as Customer[],
       showModal: false,
       editingProduct: null as SalesProduct | null,
@@ -218,26 +227,7 @@ export default defineComponent({
       STATUS_LABELS,
     }
   },
-  computed: {
-    filteredProducts(): SalesProduct[] {
-      let list = this.products
-      if (this.search) {
-        const kw = this.search.toLowerCase()
-        list = list.filter(p =>
-          p.name.toLowerCase().includes(kw) ||
-          p.hs_code.includes(kw) ||
-          (p.product_code ?? '').toLowerCase().includes(kw) ||
-          (p.model_no ?? '').toLowerCase().includes(kw) ||
-          (p.batch_nos ?? []).some(no => no.toLowerCase().includes(kw)) // 以生產批號反查產品
-        )
-      }
-      if (this.cbamFilter === 'yes') list = list.filter(p => p.is_cbam_applicable)
-      if (this.cbamFilter === 'no')  list = list.filter(p => !p.is_cbam_applicable)
-      if (this.eudrFilter === 'yes') list = list.filter(p => p.is_eudr_applicable)
-      if (this.eudrFilter === 'no')  list = list.filter(p => !p.is_eudr_applicable)
-      return list
-    },
-  },
+  computed: {},
   async mounted() {
     await this.loadData()
     this.loadCustomers()
@@ -246,17 +236,26 @@ export default defineComponent({
     async loadData() {
       this.isLoading = true
       try {
-        const { data } = await salesProductApi.list()
+        const { data } = await salesProductApi.list({
+          page: this.pagination.current_page,
+          per_page: this.pagination.per_page,
+          q: this.search || undefined,
+          cbam: this.cbamFilter !== 'all' ? this.cbamFilter : undefined,
+          eudr: this.eudrFilter !== 'all' ? this.eudrFilter : undefined,
+        })
         this.products = data.data
+        this.pagination = data.pagination
       } finally { this.isLoading = false }
     },
+
+    resetAndLoad() { this.pagination.current_page = 1; this.loadData() },
+    goPage(page: number) { this.pagination.current_page = page; this.loadData() },
     async loadCustomers() {
       try {
         const { data } = await customersApi.list({ per_page: 200, status: 'active' })
         this.allCustomers = data.data
       } catch { /* silent */ }
     },
-    onSearch() { /* filteredProducts computed 即時更新，無需額外觸發 */ },
     openEdit(p: SalesProduct) {
       this.editingProduct = p
       this.form = { name: p.name, product_code: p.product_code ?? '', model_no: p.model_no ?? '', hs_code: p.hs_code, unit: p.unit ?? '', unit_price: p.unit_price, currency: p.currency ?? 'USD', description: (p as any).description ?? '', customer_id: p.customer_id ?? '' }

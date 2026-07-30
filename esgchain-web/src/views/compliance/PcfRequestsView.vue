@@ -9,7 +9,7 @@
 
     <!-- 篩選列 -->
     <div class="filter-bar">
-      <select v-model="filters.status" @change="loadData" class="filter-select">
+      <select v-model="filters.status" @change="resetAndLoad" class="filter-select">
         <option value="">全部狀態</option>
         <option value="pending">待申報</option>
         <option value="submitted">已提交</option>
@@ -21,10 +21,10 @@
         type="number"
         placeholder="申報年度"
         class="filter-input"
-        @keyup.enter="loadData"
+        @keyup.enter="resetAndLoad"
         style="width:120px"
       />
-      <button class="btn-ghost" @click="loadData">搜尋</button>
+      <button class="btn-ghost" @click="resetAndLoad">搜尋</button>
     </div>
 
     <!-- 列表 -->
@@ -46,7 +46,7 @@
         </thead>
         <tbody>
           <tr v-for="req in requests" :key="req.id">
-            <td>{{ req.supplier_name || '-' }}</td>
+            <td>{{ req.supplier_name ? maskSupplierName(req.supplier_name) : '-' }}</td>
             <td class="font-mono" style="white-space:nowrap;">{{ req.period_start }} ~ {{ req.period_end }}</td>
             <td class="font-mono" style="white-space:nowrap;">{{ req.due_date }}</td>
             <td>
@@ -69,6 +69,13 @@
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- 分頁 -->
+    <div class="pagination">
+      <span>第 {{ pagination.current_page }} / {{ pagination.last_page }} 頁</span>
+      <button class="pg-btn" :disabled="pagination.current_page <= 1" @click="goPage(pagination.current_page - 1)">‹</button>
+      <button class="pg-btn" :disabled="pagination.current_page >= pagination.last_page" @click="goPage(pagination.current_page + 1)">›</button>
     </div>
 
     <!-- 發送請求 Modal -->
@@ -124,6 +131,7 @@
 <script lang="ts">
 import { defineComponent } from 'vue'
 import { pcfRequestApi, type PcfRequestSummary } from '@/api/modules/pcf'
+import { maskSupplierName } from '@/utils/maskName'
 
 export default defineComponent({
   name: 'PcfRequestsView',
@@ -131,6 +139,7 @@ export default defineComponent({
     return {
       loading: false,
       requests: [] as PcfRequestSummary[],
+      pagination: { current_page: 1, per_page: 20, total: 0, last_page: 1 },
       filters: {
         status: '',
         period_year: '',
@@ -153,20 +162,28 @@ export default defineComponent({
     this.loadData()
   },
   methods: {
+    maskSupplierName,
     async loadData() {
       this.loading = true
       try {
-        const params: any = {}
+        const params: any = {
+          page: this.pagination.current_page,
+          per_page: this.pagination.per_page,
+        }
         if (this.filters.status) params.status = this.filters.status
         if (this.filters.period_year) params.period_year = this.filters.period_year
         const res = await pcfRequestApi.list(params)
         this.requests = res.data.data || []
+        this.pagination = res.data.pagination
       } catch {
         this.requests = []
       } finally {
         this.loading = false
       }
     },
+
+    goPage(page: number) { this.pagination.current_page = page; this.loadData() },
+    resetAndLoad() { this.pagination.current_page = 1; this.loadData() },
     progressPct(req: PcfRequestSummary) {
       if (!req.progress.total) return 0
       return Math.round((req.progress.submitted / req.progress.total) * 100)

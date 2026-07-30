@@ -18,11 +18,21 @@ class PcfRequestController extends Controller
             'status'      => $request->status,
             'period_year' => $request->period_year,
             'due_before'  => $request->due_before,
+            'page'        => $request->page,
+            'per_page'    => $request->per_page,
         ], fn($v) => $v !== null);
+
+        $paginated = $this->service->list($filters);
 
         return response()->json([
             'success' => true,
-            'data'    => $this->service->list($filters),
+            'data'    => $paginated->items(),
+            'pagination' => [
+                'current_page' => $paginated->currentPage(),
+                'per_page'     => $paginated->perPage(),
+                'total'        => $paginated->total(),
+                'last_page'    => $paginated->lastPage(),
+            ],
         ]);
     }
 

@@ -59,10 +59,17 @@ class ComplianceDashboardController extends Controller
     {
         $tier         = $request->query('tier') !== null ? (int) $request->query('tier') : null;
         $riskScoreMin = $request->query('risk_score_min') !== null ? (float) $request->query('risk_score_min') : null;
+        $page         = (int) $request->query('page', 1);
+        $perPage      = (int) $request->query('per_page', 20);
+
+        $result = $this->service->getMatrixData($request->query('supplier_group_id'), $tier, $riskScoreMin, $page, $perPage);
+        $pagination = $result['pagination'];
+        unset($result['pagination']);
 
         return response()->json([
-            'success' => true,
-            'data'    => $this->service->getMatrixData($request->query('supplier_group_id'), $tier, $riskScoreMin),
+            'success'    => true,
+            'data'       => $result,
+            'pagination' => $pagination,
         ]);
     }
 
@@ -83,19 +90,31 @@ class ComplianceDashboardController extends Controller
         ]);
     }
 
-    public function pendingVerifications(): JsonResponse
+    public function pendingVerifications(Request $request): JsonResponse
     {
+        $page    = (int) $request->query('page', 1);
+        $perPage = (int) $request->query('per_page', 20);
+
+        $result = $this->service->getPendingVerifications($page, $perPage);
+
         return response()->json([
-            'success' => true,
-            'data'    => $this->service->getPendingVerifications(),
+            'success'    => true,
+            'data'       => $result['data'],
+            'pagination' => $result['pagination'],
         ]);
     }
 
-    public function dppReadiness(): JsonResponse
+    public function dppReadiness(Request $request): JsonResponse
     {
+        $page    = (int) $request->query('page', 1);
+        $perPage = (int) $request->query('per_page', 20);
+
+        $result = $this->service->getDppReadinessList($page, $perPage);
+
         return response()->json([
-            'success' => true,
-            'data'    => $this->service->getDppReadinessList(),
+            'success'    => true,
+            'data'       => $result['data'],
+            'pagination' => $result['pagination'],
         ]);
     }
 

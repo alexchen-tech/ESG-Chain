@@ -14,11 +14,19 @@ class TradeGoodController extends Controller
 {
     public function __construct(private readonly TradeGoodService $service) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
+        $paginated = $this->service->getList($request->only(['page', 'per_page', 'q', 'cbam', 'eudr']));
+
         return response()->json([
             'success' => true,
-            'data'    => $this->service->getList(),
+            'data'    => $paginated->items(),
+            'pagination' => [
+                'current_page' => $paginated->currentPage(),
+                'per_page'     => $paginated->perPage(),
+                'total'        => $paginated->total(),
+                'last_page'    => $paginated->lastPage(),
+            ],
         ]);
     }
 

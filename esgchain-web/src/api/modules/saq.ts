@@ -19,9 +19,23 @@ export interface SaqProject {
   updated_at: string
 }
 
+export interface SaqProjectPagination {
+  current_page: number
+  per_page: number
+  total: number
+  last_page: number
+}
+
+export interface SaqProjectStatusCounts {
+  all: number
+  draft: number
+  active: number
+  closed: number
+}
+
 export const saqProjectApi = {
   list: (params?: Record<string, any>) =>
-    http.get<{ success: boolean; data: SaqProject[] }>('/api/v1/saq-projects', { params }),
+    http.get<{ success: boolean; data: SaqProject[]; pagination: SaqProjectPagination; status_counts: SaqProjectStatusCounts }>('/api/v1/saq-projects', { params }),
 
   get: (id: string) =>
     http.get<{ success: boolean; data: SaqProject }>(`/api/v1/saq-projects/${id}`),

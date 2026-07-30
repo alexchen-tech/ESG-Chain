@@ -371,23 +371,98 @@ export interface PendingVerificationDoc {
   status: 'valid' | 'expiring_soon' | 'expired' | 'pending'
 }
 
+export interface PaginationMeta {
+  current_page: number
+  per_page: number
+  total: number
+  last_page: number
+}
+
 export const complianceDashboardApi = {
   getSupplierDashboard: () =>
     http.get<{ success: boolean; data: SupplierComplianceSummary[] }>('/api/v1/compliance/dashboard'),
   getProductDashboard: () =>
     http.get<{ success: boolean; data: ProductComplianceStatus[] }>('/api/v1/compliance/product-dashboard'),
-  matrix: (params?: { supplier_group_id?: string; tier?: number | string; risk_score_min?: number | string }) =>
-    http.get<{ success: boolean; data: MatrixData }>('/api/v1/compliance/matrix', { params }),
+  matrix: (params?: { supplier_group_id?: string; tier?: number | string; risk_score_min?: number | string; page?: number; per_page?: number }) =>
+    http.get<{ success: boolean; data: MatrixData; pagination: PaginationMeta }>('/api/v1/compliance/matrix', { params }),
   matrixDrill: (params: { material_group_id: string; doc_type: string; supplier_group_id?: string; tier?: number | string; risk_score_min?: number | string }) =>
     http.get<{ success: boolean; data: MatrixDrillData }>('/api/v1/compliance/matrix/drill', { params }),
-  dppReadiness: () =>
-    http.get<{ success: boolean; data: DppProduct[] }>('/api/v1/compliance/dpp-readiness'),
+  dppReadiness: (params?: { page?: number; per_page?: number }) =>
+    http.get<{ success: boolean; data: DppProduct[]; pagination: PaginationMeta }>('/api/v1/compliance/dpp-readiness', { params }),
   dppReadinessDetail: (productId: string) =>
     http.get<{ success: boolean; data: DppDetail }>(`/api/v1/compliance/dpp-readiness/${productId}`),
   syncProductRegulations: (productId: string) =>
     http.post<{ success: boolean; data: { id: string; inferred_regulations: string[]; applicable_regulations: string[] }; message: string }>(`/api/v1/compliance/products/${productId}/sync-regulations`),
-  pendingVerifications: () =>
-    http.get<{ success: boolean; data: PendingVerificationDoc[] }>('/api/v1/compliance/pending-verifications'),
+  pendingVerifications: (params?: { page?: number; per_page?: number }) =>
+    http.get<{ success: boolean; data: PendingVerificationDoc[]; pagination: PaginationMeta }>('/api/v1/compliance/pending-verifications', { params }),
+}
+
+export interface Scope3MaterialRollupItem {
+  material_item_id: string
+  material_name: string | null
+  total_emissions: number
+  percentage: number
+  data_quality_counts: Record<string, number>
+  data_quality_breakdown: Record<string, number>
+  estimated_count: number
+  line_count: number
+}
+
+export interface Scope3MaterialRollupGroup {
+  material_group_id: string | null
+  material_group_name: string
+  total_emissions: number
+  materials: Scope3MaterialRollupItem[]
+}
+
+export interface Scope3MaterialRollup {
+  period_from: string
+  period_to: string
+  total_emissions: number
+  note: string
+  groups: Scope3MaterialRollupGroup[]
+  pagination: PaginationMeta
+}
+
+export interface Scope3DrillBatch {
+  batch_id: string
+  erp_batch_no: string | null
+  production_date: string | null
+  quantity: number
+  unit: string | null
+  contribution: number
+  supplier_id: string | null
+  supplier_name: string | null
+}
+
+export interface Scope3DrillProduct {
+  sales_product_id: string
+  product_name: string | null
+  product_code: string | null
+  subtotal_per_unit: number
+  batch_quantity: number
+  contribution: number
+  material_supplier_name: string | null
+  data_quality: string | null
+  is_estimated: boolean
+  batches: Scope3DrillBatch[]
+}
+
+export interface Scope3MaterialDrill {
+  material_item_id: string
+  material_name: string | null
+  material_group_name: string | null
+  period_from: string
+  period_to: string
+  total_emissions: number
+  products: Scope3DrillProduct[]
+}
+
+export const scope3Category1Api = {
+  materialRollup: (params: { period_from: string; period_to: string; page?: number; per_page?: number }) =>
+    http.get<{ success: boolean; data: Scope3MaterialRollup }>('/api/v1/scope3/category1/material-rollup', { params }),
+  materialDrill: (materialItemId: string, params: { period_from: string; period_to: string }) =>
+    http.get<{ success: boolean; data: Scope3MaterialDrill }>(`/api/v1/scope3/category1/material-rollup/${materialItemId}/drill`, { params }),
 }
 
 export const tradeGoodSearchApi = {

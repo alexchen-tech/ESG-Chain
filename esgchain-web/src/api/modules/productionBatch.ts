@@ -273,8 +273,8 @@ export const exportReviewQueueApi = {
 }
 
 export const productionBatchApi = {
-  list: (filters?: Record<string, string>) =>
-    http.get<{ success: boolean; data: ProductionBatch[] }>('/api/v1/production-batches', { params: filters }),
+  list: (filters?: Record<string, string | number>) =>
+    http.get<{ success: boolean; data: ProductionBatch[]; pagination: Pagination }>('/api/v1/production-batches', { params: filters }),
 
   // 批號×市場出口合規審查
   exportReviews: (batchId: string) =>

@@ -275,7 +275,29 @@ class SupplierComplianceStatusService
         $supplier->update(['applicable_regulations' => $regulations]);
     }
 
-    public function getMatrixData(?string $supplierGroupId = null, ?int $tier = null, ?float $riskScoreMin = null): array
+    /**
+     * 對純陣列資料手動切頁，回傳 ['data' => 當頁項目, 'pagination' => meta]。
+     */
+    private function paginateArray(array $items, int $page, int $perPage): array
+    {
+        $page    = max(1, $page);
+        $perPage = max(1, $perPage);
+        $total   = count($items);
+        $lastPage = max(1, (int) ceil($total / $perPage));
+        $page    = min($page, $lastPage);
+
+        return [
+            'data'       => array_slice($items, ($page - 1) * $perPage, $perPage),
+            'pagination' => [
+                'current_page' => $page,
+                'per_page'     => $perPage,
+                'total'        => $total,
+                'last_page'    => $lastPage,
+            ],
+        ];
+    }
+
+    public function getMatrixData(?string $supplierGroupId = null, ?int $tier = null, ?float $riskScoreMin = null, int $page = 1, int $perPage = 20): array
     {
         $materialGroups = MaterialGroup::whereNotNull('required_doc_types')
             ->where('required_doc_types', '!=', '[]')
@@ -353,21 +375,26 @@ class SupplierComplianceStatusService
             ];
         }
 
+        $paged = $this->paginateArray($rows, $page, $perPage);
+
         return [
             'doc_types'    => $docTypes,
-            'rows'         => $rows,
+            'rows'         => $paged['data'],
             'filter_group' => $supplierGroupId,
+            'pagination'   => $paged['pagination'],
         ];
     }
 
-    public function getDppReadinessList(): array
+    public function getDppReadinessList(int $page = 1, int $perPage = 20): array
     {
         $products = SalesProduct::with([
             'bomLines.materialGroup',
             'bomLines.bomLineSuppliers.supplier.complianceDocs',
         ])->get();
 
-        return $products->map(fn($p) => $this->calcDppSummary($p))->values()->toArray();
+        $list = $products->map(fn($p) => $this->calcDppSummary($p))->values()->toArray();
+
+        return $this->paginateArray($list, $page, $perPage);
     }
 
     public function getDppReadinessDetail(SalesProduct $product): array
@@ -566,9 +593,9 @@ class SupplierComplianceStatusService
         ];
     }
 
-    public function getPendingVerifications(): array
+    public function getPendingVerifications(int $page = 1, int $perPage = 20): array
     {
-        return SupplierComplianceDoc::whereNull('verified_at')
+        $list = SupplierComplianceDoc::whereNull('verified_at')
             ->with('supplier')
             ->orderByRaw('CASE WHEN expires_at IS NULL THEN 0 ELSE 1 END ASC, expires_at ASC')
             ->get()
@@ -585,6 +612,8 @@ class SupplierComplianceStatusService
                     'status'         => $doc->status,
                 ];
             })->values()->toArray();
+
+        return $this->paginateArray($list, $page, $perPage);
     }
 
     public function syncProductInferredRegulations(SalesProduct $product): array

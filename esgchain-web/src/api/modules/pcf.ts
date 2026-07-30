@@ -41,14 +41,23 @@ export interface PcfBatchItem {
   saq_round_id?: string | null
 }
 
+export interface PcfRequestPagination {
+  current_page: number
+  per_page: number
+  total: number
+  last_page: number
+}
+
 export const pcfRequestApi = {
   list: (params?: {
     supplier_id?: string
     status?: string
     period_year?: number | string
     due_before?: string
+    page?: number
+    per_page?: number
   }) =>
-    http.get<{ success: boolean; data: PcfRequestSummary[] }>('/api/v1/pcf-requests', { params }),
+    http.get<{ success: boolean; data: PcfRequestSummary[]; pagination: PcfRequestPagination }>('/api/v1/pcf-requests', { params }),
 
   batchCreate: (batches: PcfBatchItem[]) =>
     http.post<{ success: boolean; data: { created: number; skipped: any[]; errors: string[] } }>(

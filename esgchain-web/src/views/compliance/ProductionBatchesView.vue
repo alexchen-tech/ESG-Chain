@@ -19,16 +19,16 @@
 
     <!-- Filter Bar -->
     <div class="filter-bar">
-      <select v-model="filterMatchedStatus" class="filter-select" @change="loadBatches">
+      <select v-model="filterMatchedStatus" class="filter-select" @change="resetAndLoad">
         <option value="">全部狀態</option>
         <option value="matched">已匹配</option>
         <option value="unmatched">待匹配</option>
       </select>
-      <select v-model="filterSupplierId" class="filter-select" @change="loadBatches">
+      <select v-model="filterSupplierId" class="filter-select" @change="resetAndLoad">
         <option value="">全部工廠</option>
-        <option v-for="s in supplierOptions" :key="s.id" :value="s.id">{{ s.name }}</option>
+        <option v-for="s in supplierOptions" :key="s.id" :value="s.id">{{ maskSupplierName(s.name) }}</option>
       </select>
-      <span class="filter-count" v-if="!loading">{{ batches.length }} 筆</span>
+      <span class="filter-count" v-if="!loading">{{ pagination.total }} 筆</span>
     </div>
 
     <!-- Table -->
@@ -72,7 +72,7 @@
               <span v-else class="text-muted">—</span>
             </td>
             <td>
-              <span class="supplier-name">{{ b.supplier_name || '—' }}</span>
+              <span class="supplier-name">{{ maskSupplierName(b.supplier_name) || '—' }}</span>
             </td>
             <td>
               <span :class="b.matched ? 'status-badge status-matched' : 'status-badge status-pending'">
@@ -94,12 +94,21 @@
         </tbody>
       </table>
     </div>
+
+    <!-- 分頁 -->
+    <div class="pagination">
+      <span>第 {{ pagination.current_page }} / {{ pagination.last_page }} 頁</span>
+      <button class="pg-btn" :disabled="pagination.current_page <= 1" @click="goPage(pagination.current_page - 1)">‹</button>
+      <button class="pg-btn" :disabled="pagination.current_page >= pagination.last_page" @click="goPage(pagination.current_page + 1)">›</button>
+    </div>
   </div>
 </template>
 
 <script lang="ts">
 import { defineComponent } from 'vue'
 import { productionBatchApi, type ProductionBatch } from '@/api/modules/productionBatch'
+import { suppliersApi } from '@/api/modules/suppliers'
+import { maskSupplierName } from '@/utils/maskName'
 
 export default defineComponent({
   name: 'ProductionBatchesView',
@@ -108,6 +117,7 @@ export default defineComponent({
     return {
       loading: false,
       batches: [] as ProductionBatch[],
+      pagination: { current_page: 1, per_page: 20, total: 0, last_page: 1 },
       filterMatchedStatus: '' as '' | 'matched' | 'unmatched',
       filterSupplierId: '',
       supplierOptions: [] as { id: string; name: string }[],
@@ -115,32 +125,39 @@ export default defineComponent({
   },
 
   async mounted() {
-    await this.loadBatches()
+    await Promise.all([this.loadBatches(), this.loadSupplierOptions()])
   },
 
   methods: {
+    maskSupplierName,
     async loadBatches() {
       this.loading = true
       try {
-        const filters: Record<string, string> = {}
+        const filters: Record<string, string | number> = {
+          page: this.pagination.current_page,
+          per_page: this.pagination.per_page,
+        }
         if (this.filterMatchedStatus) filters.matched_status = this.filterMatchedStatus
         if (this.filterSupplierId) filters.supplier_id = this.filterSupplierId
 
         const res = await productionBatchApi.list(filters)
         this.batches = res.data.data
-
-        const seen = new Set<string>()
-        this.supplierOptions = []
-        for (const b of this.batches) {
-          if (b.supplier_id && !seen.has(b.supplier_id)) {
-            seen.add(b.supplier_id)
-            this.supplierOptions.push({ id: b.supplier_id, name: b.supplier_name || b.supplier_id })
-          }
-        }
+        this.pagination = res.data.pagination
       } finally {
         this.loading = false
       }
     },
+
+    // 下拉選單獨立取得全部工廠清單，不可依賴分頁後的批號列表（否則未出現在當頁的工廠會消失於選單）
+    async loadSupplierOptions() {
+      try {
+        const res = await suppliersApi.list({ per_page: 200 })
+        this.supplierOptions = res.data.data.map(s => ({ id: s.id, name: s.name }))
+      } catch { /* silent */ }
+    },
+
+    goPage(page: number) { this.pagination.current_page = page; this.loadBatches() },
+    resetAndLoad() { this.pagination.current_page = 1; this.loadBatches() },
   },
 })
 </script>

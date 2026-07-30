@@ -43,6 +43,13 @@
       </table>
     </div>
 
+    <!-- 分頁 -->
+    <div v-if="events.length" class="pagination">
+      <span>第 {{ pagination.current_page }} / {{ pagination.last_page }} 頁（共 {{ pagination.total }} 筆）</span>
+      <button class="pg-btn" :disabled="pagination.current_page <= 1" @click="goPage(pagination.current_page - 1)">‹</button>
+      <button class="pg-btn" :disabled="pagination.current_page >= pagination.last_page" @click="goPage(pagination.current_page + 1)">›</button>
+    </div>
+
     <!-- 新增 Modal -->
     <div v-if="showCreate" class="modal-overlay" @click.self="showCreate = false">
       <div class="modal-content">
@@ -99,6 +106,7 @@ export default {
       loading: false,
       showCreate: false,
       creating: false,
+      pagination: { current_page: 1, per_page: 20, total: 0, last_page: 1 },
       form: { name: '', event_type: 'tariff_change', severity: 'medium', country_codes_str: '', occurred_at: '' },
     }
   },
@@ -107,9 +115,19 @@ export default {
     async loadEvents() {
       this.loading = true
       try {
-        const res = await riskApi.geoEvents()
+        const res = await riskApi.geoEvents({ page: this.pagination.current_page, per_page: this.pagination.per_page })
         this.events = res.data.data
+        this.pagination = {
+          current_page: res.data.current_page,
+          per_page: res.data.per_page,
+          total: res.data.total,
+          last_page: res.data.last_page,
+        }
       } catch (e) { console.error(e) } finally { this.loading = false }
+    },
+    goPage(page) {
+      this.pagination.current_page = page
+      this.loadEvents()
     },
     async createEvent() {
       if (!this.form.name || !this.form.occurred_at) return

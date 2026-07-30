@@ -22,11 +22,35 @@ class SaqProjectController extends Controller
         private readonly ProjectQuestionService $snapshotService,
     ) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $projects = SaqProject::with(['template', 'series'])->orderByDesc('created_at')->get();
+        $status = $request->input('status');
 
-        return response()->json(['success' => true, 'data' => $projects]);
+        $query = SaqProject::with(['template', 'series'])->orderByDesc('created_at');
+        if ($status && $status !== 'all') {
+            $query->where('status', $status);
+        }
+
+        $paginated = $query->paginate($request->input('per_page', 20), ['*'], 'page', $request->input('page', 1));
+
+        $statusCounts = SaqProject::selectRaw('status, count(*) as cnt')->groupBy('status')->pluck('cnt', 'status');
+
+        return response()->json([
+            'success' => true,
+            'data'    => $paginated->items(),
+            'pagination' => [
+                'current_page' => $paginated->currentPage(),
+                'per_page'     => $paginated->perPage(),
+                'total'        => $paginated->total(),
+                'last_page'    => $paginated->lastPage(),
+            ],
+            'status_counts' => [
+                'all'    => (int) $statusCounts->sum(),
+                'draft'  => (int) ($statusCounts['draft'] ?? 0),
+                'active' => (int) ($statusCounts['active'] ?? 0),
+                'closed' => (int) ($statusCounts['closed'] ?? 0),
+            ],
+        ]);
     }
 
     public function show(SaqProject $project): JsonResponse

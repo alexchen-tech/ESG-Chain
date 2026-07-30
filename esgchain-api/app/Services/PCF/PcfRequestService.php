@@ -6,6 +6,7 @@ use App\Models\PcfRequest;
 use App\Models\PcfRequestLine;
 use App\Models\ProductBomLine;
 use Carbon\Carbon;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 
 class PcfRequestService
@@ -87,7 +88,7 @@ class PcfRequestService
     /**
      * 查詢 PCF 請求列表（含進度）
      */
-    public function list(array $filters = []): array
+    public function list(array $filters = []): LengthAwarePaginator
     {
         $query = PcfRequest::with('supplier', 'lines');
 
@@ -104,7 +105,10 @@ class PcfRequestService
             $query->where('due_date', '<=', $filters['due_before']);
         }
 
-        return $query->orderBy('due_date')->get()->map(function (PcfRequest $r) {
+        $paginated = $query->orderBy('due_date')
+            ->paginate($filters['per_page'] ?? 20, ['*'], 'page', $filters['page'] ?? 1);
+
+        $paginated->getCollection()->transform(function (PcfRequest $r) {
             $total     = $r->lines->count();
             $submitted = $r->lines->whereIn('status', ['submitted', 'verified'])->count();
             return [
@@ -119,7 +123,9 @@ class PcfRequestService
                 'progress'      => ['submitted' => $submitted, 'total' => $total],
                 'created_at'    => $r->created_at?->toDateString(),
             ];
-        })->values()->toArray();
+        });
+
+        return $paginated;
     }
 
     /**

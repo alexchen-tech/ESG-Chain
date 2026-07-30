@@ -5,6 +5,7 @@ namespace App\Services\ProductionBatch;
 use App\Models\ProductionBatch;
 use App\Models\SalesProduct;
 use App\Models\Supplier;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
@@ -94,7 +95,7 @@ class ProductionBatchService
      * List production batches with optional filters.
      * Supported: matched_status (matched|unmatched), supplier_id
      */
-    public function list(array $filters = []): Collection
+    public function list(array $filters = []): LengthAwarePaginator
     {
         $query = ProductionBatch::with([
             'supplier:id,name,code',
@@ -115,6 +116,7 @@ class ProductionBatchService
             }
         }
 
-        return $query->orderByDesc('production_date')->orderByDesc('created_at')->get();
+        return $query->orderByDesc('production_date')->orderByDesc('created_at')
+            ->paginate($filters['per_page'] ?? 20, ['*'], 'page', $filters['page'] ?? 1);
     }
 }

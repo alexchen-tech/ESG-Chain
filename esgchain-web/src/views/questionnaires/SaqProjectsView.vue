@@ -20,17 +20,17 @@
         :key="tab.value"
         class="tab-btn"
         :class="{ active: activeTab === tab.value }"
-        @click="activeTab = tab.value"
+        @click="switchTab(tab.value)"
       >
         {{ tab.label }}
-        <span class="tab-count">{{ countByStatus(tab.value) }}</span>
+        <span class="tab-count">{{ statusCounts[tab.value] ?? 0 }}</span>
       </button>
     </div>
 
     <!-- 列表 -->
     <div class="card" style="padding:0;">
       <div v-if="isLoading" class="loading-mask">載入中...</div>
-      <div v-else-if="filteredProjects.length === 0" class="empty-state" style="padding:48px;">
+      <div v-else-if="projects.length === 0" class="empty-state" style="padding:48px;">
         <p>{{ activeTab === 'all' ? '尚無問卷專案' : '此狀態下沒有專案' }}</p>
       </div>
       <table v-else class="data-table">
@@ -47,7 +47,7 @@
         </thead>
         <tbody>
           <tr
-            v-for="p in filteredProjects"
+            v-for="p in projects"
             :key="p.id"
             class="clickable-row"
             @click="router.push(`/questionnaires/projects/${p.id}`)"
@@ -79,6 +79,13 @@
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- 分頁 -->
+    <div class="pagination">
+      <span>第 {{ pagination.current_page }} / {{ pagination.last_page }} 頁</span>
+      <button class="pg-btn" :disabled="pagination.current_page <= 1" @click="goPage(pagination.current_page - 1)">‹</button>
+      <button class="pg-btn" :disabled="pagination.current_page >= pagination.last_page" @click="goPage(pagination.current_page + 1)">›</button>
     </div>
 
     <!-- 建立專案 Modal -->
@@ -176,6 +183,8 @@ export default defineComponent({
       projects: [] as SaqProject[],
       seriesList: [] as AssessmentSeries[],
       supplierGroups: [] as SupplierGroup[],
+      pagination: { current_page: 1, per_page: 20, total: 0, last_page: 1 },
+      statusCounts: { all: 0, draft: 0, active: 0, closed: 0 } as Record<string, number>,
       activeTab: 'all' as string,
       showCreateModal: false,
       createForm: { name: '', due_date: '', series_id: '', supplier_group_id: '' },
@@ -186,8 +195,8 @@ export default defineComponent({
 
   computed: {
     filteredProjects(): SaqProject[] {
-      if (this.activeTab === 'all') return this.projects
-      return this.projects.filter(p => p.status === this.activeTab)
+      // status 篩選已在後端套用（見 loadProjects），此處直接回傳當頁資料即可
+      return this.projects
     },
     selectedSeriesInfo(): AssessmentSeries | undefined {
       return (this.seriesList as AssessmentSeries[]).find((s: AssessmentSeries) => s.id === this.createForm.series_id)
@@ -207,10 +216,24 @@ export default defineComponent({
     async loadProjects() {
       this.isLoading = true
       try {
-        const { data } = await saqProjectApi.list()
+        const { data } = await saqProjectApi.list({
+          page: this.pagination.current_page,
+          per_page: this.pagination.per_page,
+          status: this.activeTab !== 'all' ? this.activeTab : undefined,
+        })
         this.projects = data.data
+        this.pagination = data.pagination
+        this.statusCounts = data.status_counts ?? this.statusCounts
       } finally { this.isLoading = false }
     },
+
+    switchTab(tab: string) {
+      this.activeTab = tab
+      this.pagination.current_page = 1
+      this.loadProjects()
+    },
+
+    goPage(page: number) { this.pagination.current_page = page; this.loadProjects() },
 
     async loadSeriesList() {
       try {
@@ -246,11 +269,6 @@ export default defineComponent({
     domainBadgeStyle(domain: string | null): Record<string, string> {
       const color = this.domainColor(domain)
       return { background: color + '15', color, border: `1px solid ${color}35`, fontWeight: '600' }
-    },
-
-    countByStatus(tab: string): number {
-      if (tab === 'all') return this.projects.length
-      return this.projects.filter(p => p.status === tab).length
     },
 
     openCreateModal() {

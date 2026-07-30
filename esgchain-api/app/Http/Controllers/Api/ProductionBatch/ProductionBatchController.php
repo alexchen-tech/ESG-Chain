@@ -14,10 +14,20 @@ class ProductionBatchController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $filters = $request->only(['matched_status', 'supplier_id']);
-        $batches = $this->service->list($filters);
+        $filters = $request->only(['matched_status', 'supplier_id', 'page', 'per_page']);
+        $paginated = $this->service->list($filters);
+        $items = collect($paginated->items())->map(fn($b) => $this->format($b))->all();
 
-        return response()->json(['success' => true, 'data' => $batches->map(fn($b) => $this->format($b))]);
+        return response()->json([
+            'success' => true,
+            'data'    => $items,
+            'pagination' => [
+                'current_page' => $paginated->currentPage(),
+                'per_page'     => $paginated->perPage(),
+                'total'        => $paginated->total(),
+                'last_page'    => $paginated->lastPage(),
+            ],
+        ]);
     }
 
     public function show(string $id): JsonResponse

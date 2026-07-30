@@ -58,9 +58,16 @@ export interface PortalTradeGood {
   confirmed_at: string | null
 }
 
+export interface TradeGoodPagination {
+  current_page: number
+  per_page: number
+  total: number
+  last_page: number
+}
+
 export const tradeGoodApi = {
-  list: () =>
-    http.get<{ success: boolean; data: TradeGood[] }>('/api/v1/trade-goods'),
+  list: (params?: { page?: number; per_page?: number }) =>
+    http.get<{ success: boolean; data: TradeGood[]; pagination: TradeGoodPagination }>('/api/v1/trade-goods', { params }),
 
   create: (payload: Partial<TradeGood>) =>
     http.post<{ success: boolean; data: TradeGood; message: string }>('/api/v1/trade-goods', payload),

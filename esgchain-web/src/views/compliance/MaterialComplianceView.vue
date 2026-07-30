@@ -110,7 +110,7 @@
               @click="router.push(`/compliance/suppliers/${s.supplier_id}`)"
             >
               <td style="padding-left:20px;">
-                <div class="supplier-name">{{ s.supplier_name || s.supplier_id }}</div>
+                <div class="supplier-name">{{ s.supplier_name ? maskSupplierName(s.supplier_name) : s.supplier_id }}</div>
               </td>
               <td style="text-align:center;">
                 <span class="stat-badge stat-badge--green" v-if="s.valid_count > 0">{{ s.valid_count }}</span>
@@ -146,12 +146,12 @@
       <div class="filter-row" style="margin-bottom:16px;">
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <label style="font-size:13px;color:var(--text-secondary);white-space:nowrap;">供應商群組：</label>
-          <select v-model="selectedMatGroupId" class="search-input" style="width:180px;" @change="loadMatrixData">
+          <select v-model="selectedMatGroupId" class="search-input" style="width:180px;" @change="resetMatrixAndLoad">
             <option value="">全部供應商群組</option>
             <option v-for="g in supplierGroups" :key="g.id" :value="g.id">{{ g.name }}</option>
           </select>
           <label style="font-size:13px;color:var(--text-secondary);white-space:nowrap;">Tier：</label>
-          <select v-model="selectedTier" class="search-input" style="width:110px;" @change="loadMatrixData">
+          <select v-model="selectedTier" class="search-input" style="width:110px;" @change="resetMatrixAndLoad">
             <option value="">全部 Tier</option>
             <option value="1">Tier 1</option>
             <option value="2">Tier 2</option>
@@ -212,6 +212,11 @@
               </tr>
             </tbody>
           </table>
+        </div>
+        <div v-if="matrixData.rows.length" class="pagination">
+          <span>第 {{ matrixPagination.current_page }} / {{ matrixPagination.last_page }} 頁（共 {{ matrixPagination.total }} 筆）</span>
+          <button class="pg-btn" :disabled="matrixPagination.current_page <= 1" @click="goMatrixPage(matrixPagination.current_page - 1)">‹</button>
+          <button class="pg-btn" :disabled="matrixPagination.current_page >= matrixPagination.last_page" @click="goMatrixPage(matrixPagination.current_page + 1)">›</button>
         </div>
       </template>
 
@@ -276,6 +281,11 @@
               </tr>
             </tbody>
           </table>
+        </div>
+        <div v-if="dppData.length" class="pagination">
+          <span>第 {{ dppPagination.current_page }} / {{ dppPagination.last_page }} 頁（共 {{ dppPagination.total }} 筆）</span>
+          <button class="pg-btn" :disabled="dppPagination.current_page <= 1" @click="goDppPage(dppPagination.current_page - 1)">‹</button>
+          <button class="pg-btn" :disabled="dppPagination.current_page >= dppPagination.last_page" @click="goDppPage(dppPagination.current_page + 1)">›</button>
         </div>
       </template>
     </template>
@@ -423,7 +433,7 @@
             <tbody>
               <tr v-for="doc in filteredPendingDocs" :key="doc.id">
                 <td style="padding-left:20px;">
-                  <div class="supplier-name">{{ doc.supplier_name || doc.supplier_id }}</div>
+                  <div class="supplier-name">{{ doc.supplier_name ? maskSupplierName(doc.supplier_name) : doc.supplier_id }}</div>
                 </td>
                 <td>
                   <span class="font-mono" style="font-size:12px;">{{ doc.doc_type }}</span>
@@ -444,7 +454,7 @@
                 <td style="text-align:center;">
                   <button
                     v-if="authStore.userRole !== 'analyst'"
-                    class="btn btn-sm btn-outline"
+                    class="btn btn-sm btn-secondary"
                     @click="openVerifyModal(doc)"
                     style="font-size:12px;padding:4px 10px;"
                   >審核…</button>
@@ -452,6 +462,11 @@
               </tr>
             </tbody>
           </table>
+        </div>
+        <div v-if="filteredPendingDocs.length" class="pagination">
+          <span>第 {{ pendingPagination.current_page }} / {{ pendingPagination.last_page }} 頁（共 {{ pendingPagination.total }} 筆）</span>
+          <button class="pg-btn" :disabled="pendingPagination.current_page <= 1" @click="goPendingPage(pendingPagination.current_page - 1)">‹</button>
+          <button class="pg-btn" :disabled="pendingPagination.current_page >= pendingPagination.last_page" @click="goPendingPage(pendingPagination.current_page + 1)">›</button>
         </div>
       </template>
     </template>
@@ -468,7 +483,7 @@
           <div class="verify-summary">
             <div class="verify-row">
               <span class="verify-label">供應商</span>
-              <span class="verify-value">{{ verifyModal.doc?.supplier_name || '—' }}</span>
+              <span class="verify-value">{{ verifyModal.doc?.supplier_name ? maskSupplierName(verifyModal.doc.supplier_name) : '—' }}</span>
             </div>
             <div class="verify-row">
               <span class="verify-label">文件類型</span>
@@ -563,7 +578,7 @@
             <div v-for="(item, i) in dppDrawerData.sections.supplier_compliance.items" :key="i" class="dpp-list-row">
               <span class="status-pill" :class="docStatusClass(item.status)" style="font-size:11px;padding:2px 8px;flex-shrink:0;">{{ docStatusLabel(item.status) }}</span>
               <div class="dpp-list-info">
-                <div class="dpp-list-name">{{ item.supplier_name }}</div>
+                <div class="dpp-list-name">{{ maskSupplierName(item.supplier_name) }}</div>
                 <div class="dpp-list-sub">{{ item.doc_type }}<template v-if="item.expires_at"> · 到期 {{ item.expires_at }}</template></div>
               </div>
             </div>
@@ -669,7 +684,7 @@
           <div v-for="s in drillData.suppliers" :key="s.supplier_id" class="drill-supplier-row">
             <div class="drill-supplier-info">
               <div class="drill-supplier-name">
-                {{ s.supplier_name }}
+                {{ maskSupplierName(s.supplier_name) }}
                 <span class="tier-badge">T{{ s.tier }}</span>
                 <span class="onboarding-chip" :class="s.onboarding_stage === 'certified' ? 'onboarding-chip--certified' : 'onboarding-chip--other'">{{ s.onboarding_stage }}</span>
               </div>
@@ -690,9 +705,9 @@
             v-for="s in drillData.suppliers.filter(x => x.status !== 'valid')"
             :key="s.supplier_id"
             :href="`/cap?supplier_id=${s.supplier_id}`"
-            class="btn btn-sm btn-outline"
+            class="btn btn-sm btn-secondary"
             style="font-size:12px;"
-          >查看 CAP：{{ s.supplier_name }}</a>
+          >查看 CAP：{{ maskSupplierName(s.supplier_name) }}</a>
         </div>
       </template>
     </div>
@@ -702,10 +717,11 @@
 <script lang="ts">
 import { defineComponent } from 'vue'
 import { useRouter } from 'vue-router'
-import { complianceDashboardApi, complianceDocApi, type SupplierComplianceSummary, type MatrixData, type MatrixDrillData, type MatrixCell, type DppProduct, type DppDetail, type PendingVerificationDoc } from '@/api/modules/compliance'
+import { complianceDashboardApi, complianceDocApi, type SupplierComplianceSummary, type MatrixData, type MatrixDrillData, type MatrixCell, type DppProduct, type DppDetail, type PendingVerificationDoc, type PaginationMeta } from '@/api/modules/compliance'
 import { salesProductApi, type SalesProduct } from '@/api/modules/salesProducts'
 import { settingsApi } from '@/api/modules/settings'
 import { useAuthStore } from '@/stores/auth'
+import { maskSupplierName } from '@/utils/maskName'
 
 const REGULATION_OPTIONS = ['EUDR', 'UFLPA', 'CMRT', 'REACH', 'CE', 'ESPR']
 
@@ -756,6 +772,7 @@ export default defineComponent({
       // 矩陣
       matrixData: null as MatrixData | null,
       matrixLoading: false,
+      matrixPagination: { current_page: 1, per_page: 20, total: 0, last_page: 1 } as PaginationMeta,
       supplierGroups: [] as { id: string; name: string }[],
       selectedMatGroupId: '',
       selectedTier: '' as string,
@@ -764,6 +781,7 @@ export default defineComponent({
       // DPP
       dppData: [] as DppProduct[],
       dppLoading: false,
+      dppPagination: { current_page: 1, per_page: 20, total: 0, last_page: 1 } as PaginationMeta,
       dppDrawerOpen: false,
       dppDrawerLoading: false,
       dppDrawerData: null as DppDetail | null,
@@ -783,6 +801,7 @@ export default defineComponent({
       pendingDocs: [] as PendingVerificationDoc[],
       pendingLoading: false,
       pendingLoaded: false,
+      pendingPagination: { current_page: 1, per_page: 20, total: 0, last_page: 1 } as PaginationMeta,
       pendingFilter: { search: '', docType: '', missingExpiry: false },
       pendingSubmitting: {} as Record<string, boolean>,
       // 驗證 Modal
@@ -863,6 +882,7 @@ export default defineComponent({
   mounted() { this.loadData(); this.loadPendingDocs(); this.loadSalesProducts() },
 
   methods: {
+    maskSupplierName,
     async loadData() {
       this.isLoading = true
       try {
@@ -905,20 +925,34 @@ export default defineComponent({
     async loadMatrixData() {
       this.matrixLoading = true
       try {
-        const params: Record<string, string> = {}
+        const params: Record<string, string | number> = {
+          page: this.matrixPagination.current_page,
+          per_page: this.matrixPagination.per_page,
+        }
         if (this.selectedMatGroupId) params.supplier_group_id = this.selectedMatGroupId
         if (this.selectedTier) params.tier = this.selectedTier
         if (this.riskScoreMin !== '') params.risk_score_min = this.riskScoreMin
-        const res = await complianceDashboardApi.matrix(Object.keys(params).length ? params : undefined)
+        const res = await complianceDashboardApi.matrix(params)
         this.matrixData = res.data.data
+        this.matrixPagination = res.data.pagination
       } finally {
         this.matrixLoading = false
       }
     },
 
+    goMatrixPage(page: number) {
+      this.matrixPagination.current_page = page
+      this.loadMatrixData()
+    },
+
+    resetMatrixAndLoad() {
+      this.matrixPagination.current_page = 1
+      this.loadMatrixData()
+    },
+
     onRiskScoreInput() {
       if (this.riskDebounceTimer) clearTimeout(this.riskDebounceTimer)
-      this.riskDebounceTimer = setTimeout(() => this.loadMatrixData(), 300)
+      this.riskDebounceTimer = setTimeout(() => { this.matrixPagination.current_page = 1; this.loadMatrixData() }, 300)
     },
 
     async openDrill(materialGroupId: string, materialGroupName: string, docType: string) {
@@ -964,11 +998,20 @@ export default defineComponent({
     async loadDppData() {
       this.dppLoading = true
       try {
-        const res = await complianceDashboardApi.dppReadiness()
+        const res = await complianceDashboardApi.dppReadiness({
+          page: this.dppPagination.current_page,
+          per_page: this.dppPagination.per_page,
+        })
         this.dppData = res.data.data
+        this.dppPagination = res.data.pagination
       } finally {
         this.dppLoading = false
       }
+    },
+
+    goDppPage(page: number) {
+      this.dppPagination.current_page = page
+      this.loadDppData()
     },
 
     async openDppDrawer(productId: string, productName: string) {
@@ -1025,12 +1068,21 @@ export default defineComponent({
     async loadPendingDocs() {
       this.pendingLoading = true
       try {
-        const res = await complianceDashboardApi.pendingVerifications()
+        const res = await complianceDashboardApi.pendingVerifications({
+          page: this.pendingPagination.current_page,
+          per_page: this.pendingPagination.per_page,
+        })
         this.pendingDocs = res.data.data
+        this.pendingPagination = res.data.pagination
         this.pendingLoaded = true
       } finally {
         this.pendingLoading = false
       }
+    },
+
+    goPendingPage(page: number) {
+      this.pendingPagination.current_page = page
+      this.loadPendingDocs()
     },
 
     openVerifyModal(doc: PendingVerificationDoc) {
@@ -1189,16 +1241,7 @@ export default defineComponent({
 .none-indicator { color: var(--text-secondary); font-size: 13px; }
 .row-arrow { color: var(--text-secondary); font-size: 18px; padding-right: 12px; }
 
-/* Stat badges in cells */
-.stat-badge {
-  display: inline-flex; align-items: center; justify-content: center;
-  min-width: 28px; height: 26px; border-radius: 6px;
-  font-size: 13px; font-weight: 700; font-family: 'Fira Code', monospace; padding: 0 8px;
-}
-.stat-badge--green { background: #dcfce7; color: #15803d; }
-.stat-badge--orange { background: #fef3c7; color: #b45309; }
-.stat-badge--red { background: #fee2e2; color: #b91c1c; }
-.stat-zero { color: #d1d5db; font-size: 13px; font-family: 'Fira Code', monospace; }
+/* .stat-badge / .stat-zero 已搬到共用 components.css，比照 CLAUDE.md 樣式規範 */
 
 /* Missing doc tags */
 .missing-tags { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -1375,4 +1418,17 @@ export default defineComponent({
 .verify-row { display: flex; align-items: baseline; gap: 8px; }
 .verify-label { font-size: 12px; color: var(--text-secondary); width: 72px; flex-shrink: 0; }
 .verify-value { font-size: 13px; color: var(--text-primary); font-weight: 500; }
+
+.action-btn {
+  width: 26px; height: 26px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+  transition: background 0.1s, color 0.1s;
+}
+.action-btn:hover { background: var(--surface-2); color: var(--text-primary); }
 </style>

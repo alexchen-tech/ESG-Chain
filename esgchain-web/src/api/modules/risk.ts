@@ -96,8 +96,8 @@ export const riskApi = {
     http.get<{ success: boolean; data: RiskSummary }>(`/api/v1/suppliers/${supplierId}/risk-summary`),
 
   // 地緣事件 CRUD
-  geoEvents: (params?: { page?: number }) =>
-    http.get<{ data: GeoEvent[]; current_page: number; total: number }>('/api/v1/risk/geo-events', { params }),
+  geoEvents: (params?: { page?: number; per_page?: number }) =>
+    http.get<{ data: GeoEvent[]; current_page: number; per_page: number; last_page: number; total: number }>('/api/v1/risk/geo-events', { params }),
 
   createGeoEvent: (data: Partial<GeoEvent>) =>
     http.post<GeoEvent>('/api/v1/risk/geo-events', data),

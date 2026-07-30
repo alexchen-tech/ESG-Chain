@@ -23,9 +23,9 @@ class TradeGoodService
 
     public function __construct(private readonly ProductUpstreamResolver $upstream) {}
 
-    public function getList(): array
+    public function getList(array $filters = []): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
-        $goods = SalesProduct::with([
+        $query = SalesProduct::with([
             'customer:id,name,code',
             'materialGroup',
             'productionBatches:id,sales_product_id,erp_batch_no,production_date',
@@ -33,9 +33,40 @@ class TradeGoodService
             'bomLines.materialItem.materialGroup',
             'bomLines.bomLineSuppliers',
             'bomLines.materialItem.approvedSuppliers',
-        ])->orderBy('created_at', 'desc')->get();
+        ]);
 
-        return $goods->map(fn($g) => $this->summarize($g))->values()->toArray();
+        // 品項名稱 / SKU / HS Code 關鍵字搜尋（對應前端 TradeGoodsView / SalesProductsView 搜尋框）
+        if (!empty($filters['q'])) {
+            $kw = $filters['q'];
+            $query->where(function ($sub) use ($kw) {
+                $sub->where('name', 'like', "%{$kw}%")
+                    ->orWhere('product_code', 'like', "%{$kw}%")
+                    ->orWhere('model_no', 'like', "%{$kw}%")
+                    ->orWhere('hs_code', 'like', "%{$kw}%")
+                    ->orWhereHas('productionBatches', fn($b) => $b->where('erp_batch_no', 'like', "%{$kw}%"));
+            });
+        }
+
+        // CBAM 適用篩選（對應前端 cbamFilter）
+        if (($filters['cbam'] ?? 'all') === 'yes') {
+            $query->where('is_cbam_applicable', true);
+        } elseif (($filters['cbam'] ?? 'all') === 'no') {
+            $query->where('is_cbam_applicable', false);
+        }
+
+        // EUDR 適用篩選（對應前端 eudrFilter）
+        if (($filters['eudr'] ?? 'all') === 'yes') {
+            $query->where('is_eudr_applicable', true);
+        } elseif (($filters['eudr'] ?? 'all') === 'no') {
+            $query->where('is_eudr_applicable', false);
+        }
+
+        $paginated = $query->orderBy('created_at', 'desc')
+            ->paginate($filters['per_page'] ?? 20, ['*'], 'page', $filters['page'] ?? 1);
+
+        $paginated->getCollection()->transform(fn($g) => $this->summarize($g));
+
+        return $paginated;
     }
 
     public function summarize(SalesProduct $good): array

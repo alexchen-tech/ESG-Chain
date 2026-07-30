@@ -126,9 +126,16 @@ export interface ProductionBatch {
   source: string | null
 }
 
+export interface SalesProductPagination {
+  current_page: number
+  per_page: number
+  total: number
+  last_page: number
+}
+
 export const salesProductApi = {
   list: (params?: Record<string, unknown>) =>
-    http.get<{ success: boolean; data: SalesProduct[] }>('/api/v1/sales-products', { params }),
+    http.get<{ success: boolean; data: SalesProduct[]; pagination: SalesProductPagination }>('/api/v1/sales-products', { params }),
 
   search: (q: string) =>
     http.get<{ success: boolean; data: SalesProduct[] }>('/api/v1/sales-products/search', { params: { q } }),
