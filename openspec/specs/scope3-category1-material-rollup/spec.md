@@ -1,0 +1,24 @@
+# scope3-category1-material-rollup Specification
+
+## Purpose
+TBD - created by archiving change scope3-category1-material-rollup. Update Purpose after archive.
+## Requirements
+### Requirement: 物料維度範疇三類別一彙總
+系統 SHALL 提供依申報期間彙總的範疇三類別一（採購商品與服務）排放報表，主視角為物料（物料群組→物料項目），彙總邏輯為：期間內各產品最新 PCF 快照的逐物料排放小計，乘以該產品在期間內的生產批次數量加總。
+
+#### Scenario: 依物料彙總期間排放量
+- **WHEN** 使用者選定申報期間查詢範疇三類別一報表
+- **THEN** 系統 SHALL 回傳依物料群組/物料項目分組的排放量彙總，每筆包含排放量、佔總量百分比、資料品質分布
+
+#### Scenario: 下鑽物料明細
+- **WHEN** 使用者點選某物料項目
+- **THEN** 系統 SHALL 顯示該物料在此期間被哪些產品/批次使用、對應供應商、各筆貢獻量
+
+#### Scenario: 資料品質標示
+- **WHEN** 某物料的排放量計算包含 `is_estimated=true` 或 `data_quality=missing` 的快照資料
+- **THEN** 報表 SHALL 標示該物料的資料品質分布，不得隱藏估算/缺值比例
+
+#### Scenario: 估算性質標示
+- **WHEN** 使用者查看報表
+- **THEN** 畫面 SHALL 明確標示此為系統依 BOM 配方量與批次數量估算，非實際物料耗用量或經第三方查證數字
+
