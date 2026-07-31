@@ -1,4 +1,5 @@
 import http from '@/api/http'
+import type { UserPermissions } from '@/api/modules/permissions'
 
 export type InternalRole = 'admin' | 'buyer' | 'sustain' | 'comply' | 'analyst'
 
@@ -41,5 +42,20 @@ export const usersApi = {
   resetPassword: (userId: string) =>
     http.post<{ success: boolean; data: { new_password: string }; message: string }>(
       `/api/v1/users/${userId}/reset-password`
+    ),
+
+  // 個人權限覆寫（限 admin，見 openspec/changes/crud-permission-granularity design.md Decision 2：
+  // 僅支援多授予，不支援從角色權限中負向收回）
+  permissions: (userId: string) =>
+    http.get<{ success: boolean; data: UserPermissions }>(`/api/v1/users/${userId}/permissions`),
+
+  grantPermission: (userId: string, permission: string) =>
+    http.post<{ success: boolean; data: UserPermissions; message: string }>(
+      `/api/v1/users/${userId}/permissions/${encodeURIComponent(permission)}`
+    ),
+
+  revokePermission: (userId: string, permission: string) =>
+    http.delete<{ success: boolean; data: UserPermissions; message: string }>(
+      `/api/v1/users/${userId}/permissions/${encodeURIComponent(permission)}`
     ),
 }

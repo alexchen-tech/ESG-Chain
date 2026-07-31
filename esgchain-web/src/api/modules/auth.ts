@@ -16,6 +16,7 @@ export interface AuthResponse {
     email: string
     role: string
     supplierId: string | null
+    permissions: string[]
   }
 }
 

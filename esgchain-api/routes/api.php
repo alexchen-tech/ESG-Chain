@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\Suppliers\SupplierController;
 use App\Http\Controllers\Api\Suppliers\SupplierContactController;
 use App\Http\Controllers\Api\Suppliers\SupplierUserController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\PermissionController;
 use App\Http\Controllers\Api\Suppliers\SupplierImportController;
 use App\Http\Controllers\Api\Suppliers\SupplierProfileController;
 use App\Http\Controllers\Api\TradeGoods\TradeGoodController;
@@ -154,7 +155,7 @@ Route::prefix('v1')->group(function () {
         Route::get('suppliers/{supplier}/risk-summary', [SupplierController::class, 'riskSummary']);
         Route::get('suppliers/{supplier}/risk-timeline', [SupplierController::class, 'timeline']);
         Route::get('suppliers/{supplier}/users', [SupplierUserController::class, 'index']);
-        Route::post('suppliers/{supplier}/users', [SupplierUserController::class, 'store'])->middleware('role.admin');
+        Route::post('suppliers/{supplier}/users', [SupplierUserController::class, 'store'])->middleware('permission:suppliers.manage-users.create');
         Route::post('suppliers/{supplier}/contacts', [SupplierContactController::class, 'store']);
         Route::put('suppliers/{supplier}/contacts/{contact}', [SupplierContactController::class, 'update']);
         Route::delete('suppliers/{supplier}/contacts/{contact}', [SupplierContactController::class, 'destroy']);
@@ -186,20 +187,20 @@ Route::prefix('v1')->group(function () {
         Route::post('questionnaires/{questionnaire}/dispute', [QuestionnaireController::class, 'dispute']);
 
         // /saqs 審核路由（統一命名空間，寫入動作依 CLAUDE.md RBAC 表排除 buyer——buyer 無 saq 權限）
-        Route::post('saqs/{saq}/start-review', [SAQController::class, 'startReview'])->middleware('role.any:admin,sustain,comply,analyst');
-        Route::post('saqs/{saq}/complete-review', [SAQController::class, 'completeReview'])->middleware('role.any:admin,sustain,comply,analyst');
-        Route::post('saqs/{saq}/return-review', [SAQController::class, 'returnReview'])->middleware('role.any:admin,sustain,comply,analyst');
-        Route::post('saqs/{saq}/mark-reviewed', [SAQController::class, 'markReviewed'])->middleware('role.any:admin,sustain,comply,analyst');
+        Route::post('saqs/{saq}/start-review', [SAQController::class, 'startReview'])->middleware('permission:saqs.review.create');
+        Route::post('saqs/{saq}/complete-review', [SAQController::class, 'completeReview'])->middleware('permission:saqs.review.create');
+        Route::post('saqs/{saq}/return-review', [SAQController::class, 'returnReview'])->middleware('permission:saqs.review.create');
+        Route::post('saqs/{saq}/mark-reviewed', [SAQController::class, 'markReviewed'])->middleware('permission:saqs.review.create');
         // score-callback 為 esgchain-ai 計分完成後的伺服器對伺服器回呼，不加使用者角色檢查
         Route::post('saqs/{saq}/score-callback', [SAQController::class, 'scoreCallback']);
 
         // saq-scoring-v2：題目層覆核 & 計分快照 & 申訴流程（寫入動作排除 buyer）
-        Route::post('saqs/{saq}/response-reviews', [SAQController::class, 'submitResponseReviews'])->middleware('role.any:admin,sustain,comply,analyst');
-        Route::get('saqs/{saq}/response-reviews', [SAQController::class, 'getResponseReviews'])->middleware('role.any:admin,sustain,comply,analyst');
-        Route::get('saqs/{saq}/score-snapshots', [SAQController::class, 'getScoreSnapshots'])->middleware('role.any:admin,sustain,comply,analyst');
-        Route::post('saqs/{saq}/re-review', [SAQController::class, 'startReReview'])->middleware('role.any:admin,sustain,comply,analyst');
-        Route::post('saqs/{saq}/finalize', [SAQController::class, 'finalize'])->middleware('role.any:admin,sustain,comply,analyst');
-        Route::get('saqs/{saq}/prefill-hints', [SAQController::class, 'prefillHints'])->middleware('role.any:admin,sustain,comply,analyst');
+        Route::post('saqs/{saq}/response-reviews', [SAQController::class, 'submitResponseReviews'])->middleware('permission:saqs.review.create');
+        Route::get('saqs/{saq}/response-reviews', [SAQController::class, 'getResponseReviews'])->middleware('permission:saqs.review.view');
+        Route::get('saqs/{saq}/score-snapshots', [SAQController::class, 'getScoreSnapshots'])->middleware('permission:saqs.review.view');
+        Route::post('saqs/{saq}/re-review', [SAQController::class, 'startReReview'])->middleware('permission:saqs.review.create');
+        Route::post('saqs/{saq}/finalize', [SAQController::class, 'finalize'])->middleware('permission:saqs.review.create');
+        Route::get('saqs/{saq}/prefill-hints', [SAQController::class, 'prefillHints'])->middleware('permission:saqs.review.view');
 
         // M3 Risk（spec v2.1.0）
         Route::get('risk/matrix', [RiskMatrixController::class, 'matrix']);
@@ -219,92 +220,102 @@ Route::prefix('v1')->group(function () {
         Route::post('risk/geo-events/{geoEvent}/recalculate', [GeoEventController::class, 'recalculate']);
 
         // 使用者管理（全部限 admin）
-        Route::get('users', [UserController::class, 'index'])->middleware('role.admin');
-        Route::post('users', [UserController::class, 'store'])->middleware('role.admin');
-        Route::put('users/{user}/roles', [UserController::class, 'updateRoles'])->middleware('role.admin');
-        Route::post('users/{user}/toggle-active', [UserController::class, 'toggleActive'])->middleware('role.admin');
-        Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword'])->middleware('role.admin');
+        Route::get('users', [UserController::class, 'index'])->middleware('permission:users.view');
+        Route::post('users', [UserController::class, 'store'])->middleware('permission:users.create');
+        Route::put('users/{user}/roles', [UserController::class, 'updateRoles'])->middleware('permission:users.update');
+        Route::post('users/{user}/toggle-active', [UserController::class, 'toggleActive'])->middleware('permission:users.create');
+        Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword'])->middleware('permission:users.create');
+
+        // 角色權限管理（限 role.admin，不透過權限系統本身管理，避免自我鎖死；見 design.md Decision 5）
+        Route::get('settings/permissions', [PermissionController::class, 'index'])->middleware('role.admin');
+        Route::get('settings/roles/{role}/permissions', [PermissionController::class, 'rolePermissions'])->middleware('role.admin');
+        Route::put('settings/roles/{role}/permissions', [PermissionController::class, 'updateRolePermissions'])->middleware('role.admin');
+
+        // 使用者個人權限覆寫（限 role.admin，見 design.md Decision 2：僅支援多授予，不支援負向收回角色權限）
+        Route::get('users/{user}/permissions', [PermissionController::class, 'userPermissions'])->middleware('role.admin');
+        Route::post('users/{user}/permissions/{permission}', [PermissionController::class, 'grantUserPermission'])->where('permission', '.*')->middleware('role.admin');
+        Route::delete('users/{user}/permissions/{permission}', [PermissionController::class, 'revokeUserPermission'])->where('permission', '.*')->middleware('role.admin');
 
         // M9 Settings — Organization Units（寫入動作限 admin）
         Route::get('settings/org-units', [OrganizationUnitController::class, 'index']);
         Route::get('settings/org-units/tree', [OrganizationUnitController::class, 'tree']);
-        Route::post('settings/org-units', [OrganizationUnitController::class, 'store'])->middleware('role.admin');
-        Route::put('settings/org-units/{unit}', [OrganizationUnitController::class, 'update'])->middleware('role.admin');
-        Route::delete('settings/org-units/{unit}', [OrganizationUnitController::class, 'destroy'])->middleware('role.admin');
+        Route::post('settings/org-units', [OrganizationUnitController::class, 'store'])->middleware('permission:settings.org-units.create');
+        Route::put('settings/org-units/{unit}', [OrganizationUnitController::class, 'update'])->middleware('permission:settings.org-units.update');
+        Route::delete('settings/org-units/{unit}', [OrganizationUnitController::class, 'destroy'])->middleware('permission:settings.org-units.delete');
         Route::get('settings/questionnaire-templates', [QuestionnaireTemplateController::class, 'index']);
-        Route::post('settings/questionnaire-templates', [QuestionnaireTemplateController::class, 'store'])->middleware('role.admin');
+        Route::post('settings/questionnaire-templates', [QuestionnaireTemplateController::class, 'store'])->middleware('permission:settings.questionnaire-templates.create');
         Route::get('settings/questionnaire-templates/{template}', [QuestionnaireTemplateController::class, 'show']);
-        Route::put('settings/questionnaire-templates/{template}', [QuestionnaireTemplateController::class, 'update'])->middleware('role.admin');
-        Route::delete('settings/questionnaire-templates/{template}', [QuestionnaireTemplateController::class, 'destroy'])->middleware('role.admin');
-        Route::post('settings/questionnaire-templates/{template}/clone', [QuestionnaireTemplateController::class, 'clone'])->middleware('role.admin');
-        Route::post('settings/questionnaire-templates/{template}/publish', [QuestionnaireTemplateController::class, 'publish'])->middleware('role.admin');
-        Route::post('settings/questionnaire-templates/{template}/archive', [QuestionnaireTemplateController::class, 'archive'])->middleware('role.admin');
-        Route::post('settings/questionnaire-templates/{template}/unarchive', [QuestionnaireTemplateController::class, 'unarchive'])->middleware('role.admin');
+        Route::put('settings/questionnaire-templates/{template}', [QuestionnaireTemplateController::class, 'update'])->middleware('permission:settings.questionnaire-templates.update');
+        Route::delete('settings/questionnaire-templates/{template}', [QuestionnaireTemplateController::class, 'destroy'])->middleware('permission:settings.questionnaire-templates.delete');
+        Route::post('settings/questionnaire-templates/{template}/clone', [QuestionnaireTemplateController::class, 'clone'])->middleware('permission:settings.questionnaire-templates.create');
+        Route::post('settings/questionnaire-templates/{template}/publish', [QuestionnaireTemplateController::class, 'publish'])->middleware('permission:settings.questionnaire-templates.publish');
+        Route::post('settings/questionnaire-templates/{template}/archive', [QuestionnaireTemplateController::class, 'archive'])->middleware('permission:settings.questionnaire-templates.create');
+        Route::post('settings/questionnaire-templates/{template}/unarchive', [QuestionnaireTemplateController::class, 'unarchive'])->middleware('permission:settings.questionnaire-templates.create');
         // 題目 CRUD（巢狀在範本下，寫入動作限 admin）
         Route::get('settings/questionnaire-templates/{template}/questions', [SAQQuestionController::class, 'index']);
-        Route::post('settings/questionnaire-templates/{template}/questions', [SAQQuestionController::class, 'store'])->middleware('role.admin');
-        Route::put('settings/questionnaire-templates/{template}/questions/{question}', [SAQQuestionController::class, 'update'])->middleware('role.admin');
-        Route::delete('settings/questionnaire-templates/{template}/questions/{question}', [SAQQuestionController::class, 'destroy'])->middleware('role.admin');
-        Route::post('settings/questionnaire-templates/{template}/import-from-bank', ImportFromBankController::class)->middleware('role.admin');
-        Route::patch('settings/questionnaire-templates/{template}/questions/reorder', [QuestionnaireTemplateController::class, 'reorder'])->middleware('role.admin');
+        Route::post('settings/questionnaire-templates/{template}/questions', [SAQQuestionController::class, 'store'])->middleware('permission:settings.questionnaire-templates.create');
+        Route::put('settings/questionnaire-templates/{template}/questions/{question}', [SAQQuestionController::class, 'update'])->middleware('permission:settings.questionnaire-templates.update');
+        Route::delete('settings/questionnaire-templates/{template}/questions/{question}', [SAQQuestionController::class, 'destroy'])->middleware('permission:settings.questionnaire-templates.delete');
+        Route::post('settings/questionnaire-templates/{template}/import-from-bank', ImportFromBankController::class)->middleware('permission:settings.questionnaire-templates.create');
+        Route::patch('settings/questionnaire-templates/{template}/questions/reorder', [QuestionnaireTemplateController::class, 'reorder'])->middleware('permission:settings.questionnaire-templates.update');
         Route::get('settings/supplier-groups', [SupplierGroupController::class, 'index']);
-        Route::post('settings/supplier-groups', [SupplierGroupController::class, 'store'])->middleware('role.admin');
-        Route::put('settings/supplier-groups/{group}', [SupplierGroupController::class, 'update'])->middleware('role.admin');
-        Route::delete('settings/supplier-groups/{group}', [SupplierGroupController::class, 'destroy'])->middleware('role.admin');
+        Route::post('settings/supplier-groups', [SupplierGroupController::class, 'store'])->middleware('permission:settings.supplier-groups.create');
+        Route::put('settings/supplier-groups/{group}', [SupplierGroupController::class, 'update'])->middleware('permission:settings.supplier-groups.update');
+        Route::delete('settings/supplier-groups/{group}', [SupplierGroupController::class, 'destroy'])->middleware('permission:settings.supplier-groups.delete');
         Route::get('supplier-groups', [SupplierGroupController::class, 'index']);
         Route::get('supplier-groups/{group}/inferred-material-groups', [SupplierGroupController::class, 'inferredMaterialGroups']);
         Route::get('settings/sasb-industries', [SasbIndustryController::class, 'index']);
         Route::get('settings/sasb-topics', [SasbDisclosureTopicController::class, 'index']);
         Route::get('settings/question-bank', [QuestionBankController::class, 'index']);
-        Route::post('settings/question-bank', [QuestionBankController::class, 'store'])->middleware('role.admin');
-        Route::put('settings/question-bank/{question}', [QuestionBankController::class, 'update'])->middleware('role.admin');
-        Route::delete('settings/question-bank/{question}', [QuestionBankController::class, 'destroy'])->middleware('role.admin');
+        Route::post('settings/question-bank', [QuestionBankController::class, 'store'])->middleware('permission:settings.question-bank.create');
+        Route::put('settings/question-bank/{question}', [QuestionBankController::class, 'update'])->middleware('permission:settings.question-bank.update');
+        Route::delete('settings/question-bank/{question}', [QuestionBankController::class, 'destroy'])->middleware('permission:settings.question-bank.delete');
         // 題目 tag assignments（巢狀，寫入動作限 admin）
         Route::get('settings/question-bank/{question}/tags', [TagLibraryController::class, 'questionTags']);
-        Route::post('settings/question-bank/{question}/tags', [TagLibraryController::class, 'addQuestionTag'])->middleware('role.admin');
-        Route::delete('settings/question-bank/{question}/tags/{tag}', [TagLibraryController::class, 'removeQuestionTag'])->middleware('role.admin');
+        Route::post('settings/question-bank/{question}/tags', [TagLibraryController::class, 'addQuestionTag'])->middleware('permission:settings.question-bank.create');
+        Route::delete('settings/question-bank/{question}/tags/{tag}', [TagLibraryController::class, 'removeQuestionTag'])->middleware('permission:settings.question-bank.delete');
         // 標籤庫管理（寫入動作限 admin）
         Route::get('settings/dim-weight-defaults', [DimWeightDefaultsController::class, 'show']);
-        Route::put('settings/dim-weight-defaults', [DimWeightDefaultsController::class, 'update'])->middleware('role.admin');
+        Route::put('settings/dim-weight-defaults', [DimWeightDefaultsController::class, 'update'])->middleware('permission:settings.dim-weight-defaults.update');
         Route::get('settings/tag-library/l2-nodes', [QuestionTagWeightController::class, 'index']);
-        Route::put('settings/tag-library/l2-nodes/{tag}/weight', [QuestionTagWeightController::class, 'updateWeight'])->middleware('role.admin');
+        Route::put('settings/tag-library/l2-nodes/{tag}/weight', [QuestionTagWeightController::class, 'updateWeight'])->middleware('permission:settings.tag-library.update');
         Route::get('settings/tag-library/tree', [TagLibraryController::class, 'tree']);
         Route::get('settings/tag-library', [TagLibraryController::class, 'index']);
-        Route::post('settings/tag-library', [TagLibraryController::class, 'store'])->middleware('role.admin');
-        Route::put('settings/tag-library/{tag}', [TagLibraryController::class, 'update'])->middleware('role.admin');
-        Route::post('settings/tag-library/{tag}/deprecate', [TagLibraryController::class, 'deprecate'])->middleware('role.admin');
-        Route::post('settings/tag-library/{tag}/restore', [TagLibraryController::class, 'restore'])->middleware('role.admin');
+        Route::post('settings/tag-library', [TagLibraryController::class, 'store'])->middleware('permission:settings.tag-library.create');
+        Route::put('settings/tag-library/{tag}', [TagLibraryController::class, 'update'])->middleware('permission:settings.tag-library.update');
+        Route::post('settings/tag-library/{tag}/deprecate', [TagLibraryController::class, 'deprecate'])->middleware('permission:settings.tag-library.create');
+        Route::post('settings/tag-library/{tag}/restore', [TagLibraryController::class, 'restore'])->middleware('permission:settings.tag-library.create');
         // SAQ 問卷專案（含 domain）
         // Assessment Series
         // assessment-series 寫入動作排除 buyer（buyer 無 saq 權限）
         Route::get('assessment-series', [AssessmentSeriesController::class, 'index']);
-        Route::post('assessment-series', [AssessmentSeriesController::class, 'store'])->middleware('role.any:admin,sustain,comply,analyst');
+        Route::post('assessment-series', [AssessmentSeriesController::class, 'store'])->middleware('permission:saqs.review.create');
         Route::get('assessment-series/{series}', [AssessmentSeriesController::class, 'show']);
-        Route::put('assessment-series/{series}', [AssessmentSeriesController::class, 'update'])->middleware('role.any:admin,sustain,comply,analyst');
-        Route::post('assessment-series/{series}/archive', [AssessmentSeriesController::class, 'archive'])->middleware('role.any:admin,sustain,comply,analyst');
+        Route::put('assessment-series/{series}', [AssessmentSeriesController::class, 'update'])->middleware('permission:saqs.review.update');
+        Route::post('assessment-series/{series}/archive', [AssessmentSeriesController::class, 'archive'])->middleware('permission:saqs.review.create');
         Route::get('assessment-series/{series}/weights', [AssessmentSeriesWeightController::class, 'index']);
-        Route::put('assessment-series/{series}/weights', [AssessmentSeriesWeightController::class, 'update'])->middleware('role.any:admin,sustain,comply,analyst');
+        Route::put('assessment-series/{series}/weights', [AssessmentSeriesWeightController::class, 'update'])->middleware('permission:saqs.review.update');
         Route::get('assessment-series/{series}/projects', [AssessmentSeriesController::class, 'getProjects']);
         Route::get('assessment-series/{series}/comparison', [AssessmentSeriesComparisonController::class, 'show']);
         Route::get('assessment-series/{series}/scoring-config', [AssessmentSeriesController::class, 'scoringConfig']);
-        Route::put('assessment-series/{series}/scoring-config', [AssessmentSeriesController::class, 'updateScoringConfig'])->middleware('role.any:admin,sustain,comply,analyst');
+        Route::put('assessment-series/{series}/scoring-config', [AssessmentSeriesController::class, 'updateScoringConfig'])->middleware('permission:saqs.review.update');
 
         // saq-projects 寫入動作排除 buyer（buyer 無 saq 權限）
         Route::get('saq-projects', [SaqProjectController::class, 'index']);
-        Route::post('saq-projects', [SaqProjectController::class, 'store'])->middleware('role.any:admin,sustain,comply,analyst');
+        Route::post('saq-projects', [SaqProjectController::class, 'store'])->middleware('permission:saqs.review.create');
         Route::get('saq-projects/{project}', [SaqProjectController::class, 'show']);
-        Route::put('saq-projects/{project}', [SaqProjectController::class, 'update'])->middleware('role.any:admin,sustain,comply,analyst');
-        Route::delete('saq-projects/{project}', [SaqProjectController::class, 'destroy'])->middleware('role.any:admin,sustain,comply,analyst');
-        Route::post('saq-projects/{project}/send', [SaqProjectController::class, 'send'])->middleware('role.any:admin,sustain,comply,analyst');
-        Route::post('saq-projects/{project}/close', [SaqProjectController::class, 'close'])->middleware('role.any:admin,sustain,comply,analyst');
+        Route::put('saq-projects/{project}', [SaqProjectController::class, 'update'])->middleware('permission:saqs.review.update');
+        Route::delete('saq-projects/{project}', [SaqProjectController::class, 'destroy'])->middleware('permission:saqs.review.delete');
+        Route::post('saq-projects/{project}/send', [SaqProjectController::class, 'send'])->middleware('permission:saqs.review.create');
+        Route::post('saq-projects/{project}/close', [SaqProjectController::class, 'close'])->middleware('permission:saqs.review.create');
         Route::get('saq-projects/{project}/questions', [SaqProjectController::class, 'questions']);
-        Route::patch('saq-projects/{project}/question-weights', [SaqProjectController::class, 'updateWeights'])->middleware('role.any:admin,sustain,comply,analyst');
+        Route::patch('saq-projects/{project}/question-weights', [SaqProjectController::class, 'updateWeights'])->middleware('permission:saqs.review.update');
         Route::get('saq-projects/{project}/saqs', [SAQController::class, 'indexByProject']);
-        Route::post('saq-projects/{project}/saqs/send', [SAQController::class, 'send'])->middleware('role.any:admin,sustain,comply,analyst');
+        Route::post('saq-projects/{project}/saqs/send', [SAQController::class, 'send'])->middleware('permission:saqs.review.create');
         Route::get('settings/scoring-models', [ScoringModelProxyController::class, 'index']);
-        Route::post('settings/scoring-models', [ScoringModelProxyController::class, 'store'])->middleware('role.admin');
-        Route::put('settings/scoring-models/{id}', [ScoringModelProxyController::class, 'update'])->middleware('role.admin');
-        Route::delete('settings/scoring-models/{id}', [ScoringModelProxyController::class, 'destroy'])->middleware('role.admin');
+        Route::post('settings/scoring-models', [ScoringModelProxyController::class, 'store'])->middleware('permission:settings.scoring-models.create');
+        Route::put('settings/scoring-models/{id}', [ScoringModelProxyController::class, 'update'])->middleware('permission:settings.scoring-models.update');
+        Route::delete('settings/scoring-models/{id}', [ScoringModelProxyController::class, 'destroy'])->middleware('permission:settings.scoring-models.delete');
         Route::get('settings/sasb-required-topics', [SasbRequiredTopicController::class, 'index']);
         Route::post('settings/sasb-required-topics', [SasbRequiredTopicController::class, 'store']);
         Route::delete('settings/sasb-required-topics/{id}', [SasbRequiredTopicController::class, 'destroy']);
@@ -320,9 +331,11 @@ Route::prefix('v1')->group(function () {
         // CAP 矯正行動計畫
         // caps 寫入動作依 CLAUDE.md RBAC 表僅 admin/buyer/sustain/comply 可用，analyst 無 cap 權限
         Route::apiResource('caps', CAPController::class)
-            ->middlewareFor(['store', 'update', 'destroy'], 'role.any:admin,buyer,sustain,comply');
+            ->middlewareFor('store', 'permission:caps.create')
+            ->middlewareFor('update', 'permission:caps.update')
+            ->middlewareFor('destroy', 'permission:caps.delete');
         Route::post('caps/{cap}/attachments', [\App\Http\Controllers\Api\CAP\CAPAttachmentController::class, 'store'])
-            ->middleware('role.any:admin,buyer,sustain,comply');
+            ->middleware('permission:caps.create');
         Route::get('cap-attachments/{attachment}/download', [\App\Http\Controllers\Api\CAP\CAPAttachmentController::class, 'download']);
         Route::delete('cap-attachments/{attachment}', [\App\Http\Controllers\Api\CAP\CAPAttachmentController::class, 'destroy']);
 
@@ -398,7 +411,9 @@ Route::prefix('v1')->group(function () {
         // Market Definitions（目標市場定義，寫入動作限 admin）
         Route::apiResource('market-compliance-rules', MarketComplianceRuleController::class)
             ->only(['index', 'store', 'update', 'destroy'])
-            ->middlewareFor(['store', 'update', 'destroy'], 'role.admin');
+            ->middlewareFor('store', 'permission:market-compliance-rules.create')
+            ->middlewareFor('update', 'permission:market-compliance-rules.update')
+            ->middlewareFor('destroy', 'permission:market-compliance-rules.delete');
 
         // Dashboard
         Route::prefix('dashboard')->group(function () {
@@ -411,17 +426,17 @@ Route::prefix('v1')->group(function () {
 
         // System Settings — Carbon Price
         Route::get('settings/carbon-price', [CarbonPriceController::class, 'show']);
-        Route::put('settings/carbon-price', [CarbonPriceController::class, 'update']);
+        Route::put('settings/carbon-price', [CarbonPriceController::class, 'update'])->middleware('permission:settings.carbon-price.update');
 
-        // 國家風險評等（admin / sustain，Controller 內驗證角色）
-        Route::get('settings/country-risk-ratings', [CountryRiskRatingController::class, 'index']);
-        Route::post('settings/country-risk-ratings', [CountryRiskRatingController::class, 'store']);
-        Route::patch('settings/country-risk-ratings/{countryRiskRating}', [CountryRiskRatingController::class, 'update']);
+        // 國家風險評等（admin / sustain，改用 permission middleware，Controller 內硬寫檢查已移除）
+        Route::get('settings/country-risk-ratings', [CountryRiskRatingController::class, 'index'])->middleware('permission:settings.country-risk.view');
+        Route::post('settings/country-risk-ratings', [CountryRiskRatingController::class, 'store'])->middleware('permission:settings.country-risk.create');
+        Route::patch('settings/country-risk-ratings/{countryRiskRating}', [CountryRiskRatingController::class, 'update'])->middleware('permission:settings.country-risk.update');
 
         Route::get('market-definitions', [MarketDefinitionController::class, 'index']);
-        Route::post('market-definitions', [MarketDefinitionController::class, 'store'])->middleware('role.admin');
-        Route::put('market-definitions/{marketDefinition}', [MarketDefinitionController::class, 'update'])->middleware('role.admin');
-        Route::delete('market-definitions/{marketDefinition}', [MarketDefinitionController::class, 'destroy'])->middleware('role.admin');
+        Route::post('market-definitions', [MarketDefinitionController::class, 'store'])->middleware('permission:market-definitions.create');
+        Route::put('market-definitions/{marketDefinition}', [MarketDefinitionController::class, 'update'])->middleware('permission:market-definitions.update');
+        Route::delete('market-definitions/{marketDefinition}', [MarketDefinitionController::class, 'destroy'])->middleware('permission:market-definitions.delete');
 
         // Production Batches
         Route::get('production-batches', [ProductionBatchController::class, 'index']);

@@ -11,10 +11,6 @@ class CountryRiskRatingController extends Controller
 {
     public function index(): JsonResponse
     {
-        if (!auth()->user()?->hasAnyRole(['admin', 'sustain'])) {
-            return response()->json(['success' => false, 'message' => '無權限'], 403);
-        }
-
         $ratings = CountryRiskRating::orderBy('country_code')->get();
 
         return response()->json(['success' => true, 'data' => $ratings]);
@@ -22,10 +18,6 @@ class CountryRiskRatingController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        if (!auth()->user()?->hasAnyRole(['admin', 'sustain'])) {
-            return response()->json(['success' => false, 'message' => '無權限'], 403);
-        }
-
         $data = $request->validate([
             'country_code'                => ['required', 'string', 'size:2', 'unique:country_risk_ratings,country_code'],
             'country_name'                => ['required', 'string', 'max:100'],
@@ -50,10 +42,6 @@ class CountryRiskRatingController extends Controller
 
     public function update(Request $request, CountryRiskRating $countryRiskRating): JsonResponse
     {
-        if (!auth()->user()?->hasAnyRole(['admin', 'sustain'])) {
-            return response()->json(['success' => false, 'message' => '無權限'], 403);
-        }
-
         $data = $request->validate([
             'labor_risk'               => ['sometimes', 'required', 'integer', 'min:1', 'max:5'],
             'env_risk'                 => ['sometimes', 'required', 'integer', 'min:1', 'max:5'],

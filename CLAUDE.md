@@ -110,7 +110,7 @@ docker exec esgchain-web touch <容器路徑>
 
 ### 通用
 
-- 註解與 UI 文字使用**繁體中文**
+- 註解與 UI 文字使用**繁體中文**，不可中英文夾雜：畫面上顯示給使用者看的功能名稱、分類名稱、狀態標籤等，一律使用繁體中文，不可直接顯示程式內部識別碼（如模組 key、enum value、permission 字串）當作標籤。若畫面需要依內部 key 分組或列舉（例如權限模組、狀態機值），須在該元件內建立 key→中文標籤的對照表（如 `RolesView.vue` 的 `MODULE_LABELS`），不可用 `{{ rawKey }}` 直接輸出。已有既定中文譯名的專有名詞縮寫（如「CAP 矯正行動」「PCF」「SAQ」）視為既有慣例可保留，不在此限
 - 新增資料格式後，自動填入預設 seed 資料
 - 未被要求修改時，保留既有程式碼
 
@@ -149,6 +149,16 @@ docker exec esgchain-web touch <容器路徑>
 | `comply`               | dashboard, suppliers, saq, cap, tradegoods, reports  |
 | `analyst`              | dashboard, suppliers, saq, reports                   |
 | `supplier` / `sup_esg` | portal                                               |
+
+> 此表為簡化版模組層級參考，實際路由層級的權限判斷以 `role-permission-management`／`crud-permission-granularity` 建立的權限目錄（`permissions`/`role_has_permissions`/`model_has_permissions`）為準，此表可能與細粒度權限現況有落差，不可直接當作程式判斷依據。
+
+### 統一使用者權限管理原則
+
+- 權限模型一律遵守 **RBAC + CRUD 動作粒度**：權限字串格式固定為 `模組.動作`，動作限定 `view`/`create`/`update`/`delete` 四種（或因角色白名單不同而需要的更細分類），不可用單一模組級開關（如 `module.manage`）籠統控制一整個模組的所有操作
+- 使用者權限一律先**繼承角色**（`role_has_permissions`），需要例外時才疊加個人直接授權（spatie `model_has_permissions`），不可略過角色直接為每個使用者手動兜權限
+- **前端可操作性與後端存取權限必須一致**：畫面上「這個使用者看不看得到某個編輯/修改按鈕」，要跟後端該功能對應 API 路由所需的權限字串完全對應——不可只在前端用角色名稱擋按鈕、後端路由卻沒有對應的 `permission:module.action` middleware（或反過來，後端有擋、前端卻沒藏起來造成操作了才被 403）
+- 新增任何「可編輯/修改」的功能（頁面、按鈕、API）時，一律要同步：(1) 在權限目錄新增對應 `module.action` 權限字串、(2) 後端路由掛 `permission:module.action` middleware、(3) 前端依使用者有效權限（角色繼承 + 個人覆寫）決定是否顯示/啟用該操作，三者缺一不可
+- admin 角色與 admin 使用者一律視為固定擁有全部權限，不受角色權限矩陣或個人覆寫調整，避免管理員自我鎖死
 
 ---
 

@@ -87,7 +87,7 @@ const router = createRouter({
       path: '/questionnaires/templates',
       name: 'questionnaires-templates',
       component: () => import('@/views/questionnaires/QuestionnaireTemplatesView.vue'),
-      meta: { requiresAuth: true, roles: ['admin'] },
+      meta: { requiresAuth: true, roles: ['admin'], permission: 'settings.questionnaire-templates.create' },
     },
     {
       path: '/questionnaires/projects',
@@ -117,7 +117,7 @@ const router = createRouter({
       path: '/cap',
       name: 'cap',
       component: () => import('@/views/cap/CAPView.vue'),
-      meta: { requiresAuth: true, roles: ['admin', 'buyer', 'sustain', 'comply'] },
+      meta: { requiresAuth: true, roles: ['admin', 'buyer', 'sustain', 'comply'], permission: 'caps.create' },
     },
     {
       path: '/risk',
@@ -157,10 +157,16 @@ const router = createRouter({
       meta: { requiresAuth: true, roles: ['admin'] },
     },
     {
+      path: '/settings/roles',
+      name: 'settings-roles',
+      component: () => import('@/views/settings/RolesView.vue'),
+      meta: { requiresAuth: true, roles: ['admin'] },
+    },
+    {
       path: '/settings/question-bank',
       name: 'question-bank',
       component: () => import('@/views/settings/QuestionBankView.vue'),
-      meta: { requiresAuth: true, roles: ['admin'] },
+      meta: { requiresAuth: true, roles: ['admin'], permission: 'settings.question-bank.create' },
     },
     {
       path: '/settings/scoring-models',
@@ -336,7 +342,12 @@ router.beforeEach(async (to) => {
     }
   }
 
-  if (to.meta.roles && auth.user) {
+  // 有設定 meta.permission 就只看它，沒有設定才 fallback 看 meta.roles（見 design.md Decision 4）
+  if (to.meta.permission && auth.user) {
+    if (!auth.hasPermission(to.meta.permission as string)) {
+      return { name: 'dashboard' }
+    }
+  } else if (to.meta.roles && auth.user) {
     const roles = to.meta.roles as string[]
     if (!roles.includes(auth.user.role)) {
       return { name: 'dashboard' }

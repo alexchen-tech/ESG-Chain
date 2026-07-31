@@ -36,7 +36,7 @@
             </div>
             <div v-show="openGroups.includes(item.name) && (!uiStore.sidebarCollapsed || isMobile)" class="menu-children">
               <router-link
-                v-for="child in item.children.filter(c => c.roles.includes(userRole))"
+                v-for="child in item.children.filter(isMenuItemVisible)"
                 :key="child.name"
                 :to="child.path"
                 class="menu-item menu-child"
@@ -118,8 +118,8 @@ const ALL_MENU = [
       { name: 'questionnaires-review',    path: '/questionnaires/review',    label: '審核管理',    roles: ['admin','sustain','comply','analyst'] },
       { name: 'questionnaires-projects',  path: '/questionnaires/projects',  label: '評核專案',    roles: ['admin','sustain','comply','analyst'] },
       { name: 'questionnaires-series',    path: '/questionnaires/series',    label: '評核系列',    roles: ['admin','sustain','comply','analyst'] },
-      { name: 'questionnaires-templates', path: '/questionnaires/templates', label: '評核範本',     roles: ['admin'] },
-      { name: 'question-bank',            path: '/settings/question-bank',   label: '題目庫',      roles: ['admin'] },
+      { name: 'questionnaires-templates', path: '/questionnaires/templates', label: '評核範本',     roles: ['admin'], permission: 'settings.questionnaire-templates.create' },
+      { name: 'question-bank',            path: '/settings/question-bank',   label: '題目庫',      roles: ['admin'], permission: 'settings.question-bank.create' },
     ],
   },
   {
@@ -141,7 +141,7 @@ const ALL_MENU = [
       { name: 'risk-geo-events', path: '/risk/geo-events', label: '地緣事件複查', roles: ['admin','sustain'] },
       { name: 'export-risk-dashboard', path: '/trade-goods/export-risk', label: '出口合規風險看板', roles: ['admin','buyer','sustain','comply'] },
       // { name: 'sustainability-risk', path: '/dashboard/sustainability-risk', label: '永續風險概覽', roles: ['admin','sustain','comply','analyst'] }, // 與六維熱圖完全重疊，已隱藏
-      { name: 'cap',  path: '/cap',  label: 'CAP 矯正', roles: ['admin','buyer','sustain','comply'] },
+      { name: 'cap',  path: '/cap',  label: 'CAP 矯正', roles: ['admin','buyer','sustain','comply'], permission: 'caps.create' },
     ],
   },
   // { name: 'reports', path: '/reports', icon: '▦', label: '報告管理', roles: ['admin','sustain','analyst'] }, // 功能開發中，暫時隱藏
@@ -156,6 +156,7 @@ const ALL_MENU = [
     children: [
       { name: 'settings',         path: '/settings',               label: '一般設定',  roles: ['admin'] },
       { name: 'settings-users',   path: '/settings/users',         label: '使用者管理', roles: ['admin'] },
+      { name: 'settings-roles',  path: '/settings/roles',         label: '角色管理',   roles: ['admin'] },
       { name: 'classification-scoring', path: '/settings/classification-scoring', label: '分類與計分管理', roles: ['admin'] },
       { name: 'customers',        path: '/settings/customers',       label: '客戶主檔',   roles: ['admin'] },
       { name: 'market-rules',     path: '/settings/market-rules',    label: '市場合規規則', roles: ['admin'] },
@@ -185,10 +186,14 @@ export default defineComponent({
 
     const userRole = computed(() => authStore.user?.role ?? '')
 
-    const menuItems = computed(() => {
-      const role = userRole.value
-      return ALL_MENU.filter(m => m.roles.includes(role))
-    })
+    // 選單項目過濾：有設定 permission 就只看權限清單，沒有設定才 fallback 看 roles
+    // （與 router/index.ts beforeEach 的 meta.permission/meta.roles 並存邏輯一致，見 design.md Decision 4）
+    function isMenuItemVisible(item: { roles: string[]; permission?: string }): boolean {
+      if (item.permission) return authStore.hasPermission(item.permission)
+      return item.roles.includes(userRole.value)
+    }
+
+    const menuItems = computed(() => ALL_MENU.filter(isMenuItemVisible))
 
     const roleLabel = computed(() =>
       ROLE_LABELS[userRole.value] ?? userRole.value
@@ -237,7 +242,7 @@ export default defineComponent({
       return name.charAt(0).toUpperCase() || '?'
     })
 
-    return { authStore, uiStore, menuItems, roleLabel, logout, isMobile, toggleHandler, openGroups, userRole, toggleGroup, isParentActive, isChildActive, userInitial }
+    return { authStore, uiStore, menuItems, roleLabel, logout, isMobile, toggleHandler, openGroups, userRole, toggleGroup, isParentActive, isChildActive, userInitial, isMenuItemVisible }
   },
 })
 </script>

@@ -70,4 +70,22 @@ class User extends Authenticatable implements JWTSubject
     {
         return $this->hasMany(UserRoleHistory::class)->orderByDesc('created_at');
     }
+
+    public function permissionOverrideHistories(): HasMany
+    {
+        return $this->hasMany(UserPermissionOverrideHistory::class)->orderByDesc('created_at');
+    }
+
+    /**
+     * 使用者目前可用的完整權限清單（模組.動作字串陣列）。
+     * admin 角色固定回傳權限目錄全部項目（不透過 role_has_permissions 管理，見 PermissionCatalogSeeder）。
+     */
+    public function permissionStrings(): array
+    {
+        if ($this->hasRole('admin')) {
+            return array_keys(\Database\Seeders\PermissionCatalogSeeder::CATALOG);
+        }
+
+        return $this->getAllPermissions()->pluck('name')->values()->all();
+    }
 }

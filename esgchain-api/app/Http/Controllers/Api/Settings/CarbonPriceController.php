@@ -32,10 +32,6 @@ class CarbonPriceController extends Controller
 
     public function update(Request $request): JsonResponse
     {
-        if (!auth()->user()?->hasRole('admin')) {
-            return response()->json(['success' => false, 'message' => '僅限系統管理員操作'], 403);
-        }
-
         $validated = $request->validate([
             'carbon_price_eur' => ['required', 'numeric', 'min:0.01'],
         ]);

@@ -95,26 +95,79 @@
       </div>
     </div>
 
-    <!-- 角色編輯 Modal -->
+    <!-- 使用者編輯 Modal：角色 / 個人權限覆寫 -->
     <div v-if="showRoleModal" class="modal-overlay" @click.self="showRoleModal=false">
-      <div class="modal" style="min-width:380px;">
+      <div class="modal" style="min-width:480px;">
         <div class="modal-header">
-          <span class="modal-title">變更角色 — {{ activeUser?.name }}</span>
+          <span class="modal-title">編輯使用者 — {{ activeUser?.name }}</span>
           <button class="modal-close" @click="showRoleModal=false">×</button>
         </div>
-        <div class="form-group">
-          <label class="form-label">角色</label>
-          <select v-model="roleForm.role" class="form-select">
-            <option v-for="r in ROLE_OPTIONS" :key="r.value" :value="r.value">{{ r.label }}</option>
-          </select>
+
+        <div class="detail-tabs" style="margin-bottom:16px;">
+          <button
+            class="detail-tab"
+            :class="{ active: editModalTab === 'role' }"
+            @click="editModalTab = 'role'"
+          >角色</button>
+          <button
+            class="detail-tab"
+            :class="{ active: editModalTab === 'permissions' }"
+            @click="editModalTab = 'permissions'; loadUserPermissions()"
+          >個人權限覆寫</button>
         </div>
-        <div class="form-group">
-          <label class="form-label">變更原因</label>
-          <textarea v-model="roleForm.reason" class="form-textarea" placeholder="選填：說明變更原因"></textarea>
+
+        <div v-if="editModalTab === 'role'">
+          <div class="form-group">
+            <label class="form-label">角色</label>
+            <select v-model="roleForm.role" class="form-select">
+              <option v-for="r in ROLE_OPTIONS" :key="r.value" :value="r.value">{{ r.label }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">變更原因</label>
+            <textarea v-model="roleForm.reason" class="form-textarea" placeholder="選填：說明變更原因"></textarea>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" @click="showRoleModal=false">取消</button>
+            <button class="btn btn-primary" :disabled="isSubmitting" @click="doUpdateRoles">確認</button>
+          </div>
         </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" @click="showRoleModal=false">取消</button>
-          <button class="btn btn-primary" :disabled="isSubmitting" @click="doUpdateRoles">確認</button>
+
+        <div v-else>
+          <template v-if="activeUser && activeUser.roles.includes('admin')">
+            <p style="font-size:0.9rem;color:var(--text-secondary);padding:12px 0;">
+              admin 已固定擁有全部權限，不可個別覆寫。
+            </p>
+          </template>
+          <template v-else>
+            <div v-if="isLoadingPermissions" class="loading-mask" style="position:static;padding:20px 0;">載入中...</div>
+            <template v-else>
+              <div v-for="mod in permissionModules" :key="mod" class="detail-section" style="margin-bottom:10px;">
+                <div class="section-title" style="font-size:13px;">{{ MODULE_LABELS[mod] || mod }}</div>
+                <div v-for="perm in permissionCatalog[mod]" :key="perm.name" style="display:flex;align-items:center;gap:8px;padding:4px 0;">
+                  <template v-if="userRolePermissions.includes(perm.name)">
+                    <input type="checkbox" checked disabled />
+                    <span class="font-mono" style="font-size:12px;">{{ perm.name }}</span>
+                    <span class="badge badge-gray" style="font-size:11px;">已透過角色「{{ roleLabel(activeUser?.roles?.[0] || '') }}」取得</span>
+                  </template>
+                  <template v-else>
+                    <input
+                      type="checkbox"
+                      :checked="userDirectPermissions.includes(perm.name)"
+                      :disabled="isSubmittingPermission"
+                      @change="togglePersonalPermission(perm.name, ($event.target as HTMLInputElement).checked)"
+                    />
+                    <span class="font-mono" style="font-size:12px;">{{ perm.name }}</span>
+                    <span v-if="userDirectPermissions.includes(perm.name)" class="badge badge-blue" style="font-size:11px;">個人授予</span>
+                  </template>
+                </div>
+              </div>
+              <p v-if="permissionError" class="form-hint" style="color:#ef4444;">{{ permissionError }}</p>
+            </template>
+          </template>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" @click="showRoleModal=false">關閉</button>
+          </div>
         </div>
       </div>
     </div>
@@ -177,6 +230,7 @@
 <script lang="ts">
 import { defineComponent } from 'vue'
 import { usersApi, type ManagedUser, type InternalRole } from '@/api/modules/users'
+import { permissionsApi, type PermissionCatalog } from '@/api/modules/permissions'
 
 const ROLE_OPTIONS: { value: InternalRole; label: string }[] = [
   { value: 'admin', label: '管理員' },
@@ -186,12 +240,24 @@ const ROLE_OPTIONS: { value: InternalRole; label: string }[] = [
   { value: 'analyst', label: '分析師' },
 ]
 
+// 依模組分組顯示個人權限覆寫用，沿用 RolesView.vue 的模組中文標籤慣例
+const MODULE_LABELS: Record<string, string> = {
+  users: '使用者管理',
+  suppliers: '供應商管理',
+  saqs: 'SAQ 審核',
+  caps: 'CAP 矯正行動',
+  settings: '系統設定',
+  'market-compliance-rules': '市場合規規則',
+  'market-definitions': '目標市場定義',
+}
+
 export default defineComponent({
   name: 'UsersView',
 
   data() {
     return {
       ROLE_OPTIONS,
+      MODULE_LABELS,
       users: [] as ManagedUser[],
       isLoading: false,
       isSubmitting: false,
@@ -204,6 +270,13 @@ export default defineComponent({
 
       showRoleModal: false,
       roleForm: { role: 'analyst' as InternalRole, reason: '' },
+      editModalTab: 'role' as 'role' | 'permissions',
+      permissionCatalog: {} as PermissionCatalog,
+      userRolePermissions: [] as string[],
+      userDirectPermissions: [] as string[],
+      isLoadingPermissions: false,
+      isSubmittingPermission: false,
+      permissionError: '',
 
       showToggleModal: false,
       toggleForm: { reason: '' },
@@ -214,6 +287,12 @@ export default defineComponent({
 
       activeUser: null as ManagedUser | null,
     }
+  },
+
+  computed: {
+    permissionModules(): string[] {
+      return Object.keys(this.permissionCatalog)
+    },
   },
 
   mounted() {
@@ -280,7 +359,47 @@ export default defineComponent({
     openRoleModal(u: ManagedUser) {
       this.activeUser = u
       this.roleForm = { role: (u.roles[0] as InternalRole) || 'analyst', reason: '' }
+      this.editModalTab = 'role'
+      this.userRolePermissions = []
+      this.userDirectPermissions = []
+      this.permissionError = ''
       this.showRoleModal = true
+    },
+
+    async loadUserPermissions() {
+      if (!this.activeUser || this.activeUser.roles.includes('admin')) return
+      this.isLoadingPermissions = true
+      this.permissionError = ''
+      try {
+        const [catalogRes, userPermRes] = await Promise.all([
+          permissionsApi.catalog(),
+          usersApi.permissions(this.activeUser.id),
+        ])
+        this.permissionCatalog = catalogRes.data.data
+        this.userRolePermissions = userPermRes.data.data.role_permissions
+        this.userDirectPermissions = userPermRes.data.data.direct_permissions
+      } catch (e: any) {
+        this.permissionError = e?.response?.data?.message || '載入個人權限失敗'
+      } finally {
+        this.isLoadingPermissions = false
+      }
+    },
+
+    async togglePersonalPermission(permission: string, checked: boolean) {
+      if (!this.activeUser) return
+      this.isSubmittingPermission = true
+      this.permissionError = ''
+      try {
+        const { data } = checked
+          ? await usersApi.grantPermission(this.activeUser.id, permission)
+          : await usersApi.revokePermission(this.activeUser.id, permission)
+        this.userRolePermissions = data.data.role_permissions
+        this.userDirectPermissions = data.data.direct_permissions
+      } catch (e: any) {
+        this.permissionError = e?.response?.data?.message || '更新個人權限失敗'
+      } finally {
+        this.isSubmittingPermission = false
+      }
     },
 
     async doUpdateRoles() {

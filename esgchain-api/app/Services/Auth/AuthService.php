@@ -43,6 +43,7 @@ class AuthService
             'email' => $user->email,
             'role' => $user->getRoleNames()->first(),
             'supplierId' => $user->supplier_id,
+            'permissions' => $user->permissionStrings(),
         ];
     }
 
@@ -137,6 +138,7 @@ class AuthService
                 'email'      => $user->email,
                 'role'       => $user->getRoleNames()->first(),
                 'supplierId' => $user->supplier_id,
+                'permissions' => $user->permissionStrings(),
             ],
         ];
     }

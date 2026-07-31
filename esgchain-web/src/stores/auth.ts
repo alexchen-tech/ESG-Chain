@@ -25,9 +25,14 @@ export const useAuthStore = defineStore('auth', {
     isAuthenticated: (state) => !!state.accessToken,
     isSupplier: (state) => SUPPLIER_ROLES.includes(state.user?.role ?? ''),
     userRole: (state) => state.user?.role ?? null,
+    permissions: (state) => state.user?.permissions ?? [],
   },
 
   actions: {
+    hasPermission(permission: string): boolean {
+      return this.permissions.includes(permission)
+    },
+
     async login(email: string, password: string) {
       this.isLoading = true
       try {
