@@ -61,6 +61,7 @@ class EnsureSupplierPortalScope
         'GET|HEAD compliance-docs/{complianceDoc}/download',
 
         'PUT suppliers/{supplier}/profile',
+        'GET|HEAD suppliers/{supplier}/users',
 
         'GET|HEAD questionnaires',
         'GET|HEAD questionnaires/{questionnaire}',

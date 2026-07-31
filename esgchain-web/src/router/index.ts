@@ -151,6 +151,12 @@ const router = createRouter({
       meta: { requiresAuth: true, roles: ['admin'] },
     },
     {
+      path: '/settings/users',
+      name: 'settings-users',
+      component: () => import('@/views/settings/UsersView.vue'),
+      meta: { requiresAuth: true, roles: ['admin'] },
+    },
+    {
       path: '/settings/question-bank',
       name: 'question-bank',
       component: () => import('@/views/settings/QuestionBankView.vue'),

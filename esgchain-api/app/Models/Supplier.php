@@ -62,6 +62,11 @@ class Supplier extends Model
         return $this->hasMany(SupplierStatusHistory::class);
     }
 
+    public function users(): HasMany
+    {
+        return $this->hasMany(User::class);
+    }
+
     public function complianceDocs(): HasMany
     {
         return $this->hasMany(SupplierComplianceDoc::class);

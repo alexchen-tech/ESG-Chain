@@ -31,6 +31,8 @@ use App\Http\Controllers\Api\Settings\SasbRequiredTopicController;
 use App\Http\Controllers\Api\Settings\SupplierGroupController;
 use App\Http\Controllers\Api\Suppliers\SupplierController;
 use App\Http\Controllers\Api\Suppliers\SupplierContactController;
+use App\Http\Controllers\Api\Suppliers\SupplierUserController;
+use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\Suppliers\SupplierImportController;
 use App\Http\Controllers\Api\Suppliers\SupplierProfileController;
 use App\Http\Controllers\Api\TradeGoods\TradeGoodController;
@@ -151,6 +153,8 @@ Route::prefix('v1')->group(function () {
         Route::post('suppliers/{supplier}/onboarding-transition', [SupplierController::class, 'transitionOnboarding']);
         Route::get('suppliers/{supplier}/risk-summary', [SupplierController::class, 'riskSummary']);
         Route::get('suppliers/{supplier}/risk-timeline', [SupplierController::class, 'timeline']);
+        Route::get('suppliers/{supplier}/users', [SupplierUserController::class, 'index']);
+        Route::post('suppliers/{supplier}/users', [SupplierUserController::class, 'store'])->middleware('role.admin');
         Route::post('suppliers/{supplier}/contacts', [SupplierContactController::class, 'store']);
         Route::put('suppliers/{supplier}/contacts/{contact}', [SupplierContactController::class, 'update']);
         Route::delete('suppliers/{supplier}/contacts/{contact}', [SupplierContactController::class, 'destroy']);
@@ -213,6 +217,13 @@ Route::prefix('v1')->group(function () {
         Route::get('risk/geo-events/{geoEvent}', [GeoEventController::class, 'show']);
         Route::get('risk/geo-events/{geoEvent}/reviews', [GeoEventController::class, 'reviews']);
         Route::post('risk/geo-events/{geoEvent}/recalculate', [GeoEventController::class, 'recalculate']);
+
+        // 使用者管理（全部限 admin）
+        Route::get('users', [UserController::class, 'index'])->middleware('role.admin');
+        Route::post('users', [UserController::class, 'store'])->middleware('role.admin');
+        Route::put('users/{user}/roles', [UserController::class, 'updateRoles'])->middleware('role.admin');
+        Route::post('users/{user}/toggle-active', [UserController::class, 'toggleActive'])->middleware('role.admin');
+        Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword'])->middleware('role.admin');
 
         // M9 Settings — Organization Units（寫入動作限 admin）
         Route::get('settings/org-units', [OrganizationUnitController::class, 'index']);

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use PHPOpenSourceSaver\JWTAuth\Contracts\JWTSubject;
@@ -22,6 +23,7 @@ class User extends Authenticatable implements JWTSubject
         'password',
         'supplier_id',
         'organization_unit_id',
+        'is_active',
     ];
 
     protected $hidden = [
@@ -32,6 +34,7 @@ class User extends Authenticatable implements JWTSubject
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
+        'is_active' => 'boolean',
     ];
 
     public function getJWTIdentifier(): mixed
@@ -51,5 +54,20 @@ class User extends Authenticatable implements JWTSubject
     public function organizationUnit(): BelongsTo
     {
         return $this->belongsTo(OrganizationUnit::class, 'organization_unit_id');
+    }
+
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
+    }
+
+    public function statusHistories(): HasMany
+    {
+        return $this->hasMany(UserStatusHistory::class)->orderByDesc('created_at');
+    }
+
+    public function roleHistories(): HasMany
+    {
+        return $this->hasMany(UserRoleHistory::class)->orderByDesc('created_at');
     }
 }

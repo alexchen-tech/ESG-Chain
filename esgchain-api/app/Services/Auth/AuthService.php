@@ -22,6 +22,14 @@ class AuthService
         }
 
         $user = Auth::guard('api')->user();
+
+        // 帳號被停用時視同登入失敗，錯誤訊息與帳密錯誤一致，避免揭露帳號存在與否／是否被停用
+        if (!$user->is_active) {
+            Auth::guard('api')->logout();
+
+            return null;
+        }
+
         $refreshToken = $this->issueRefreshToken($user);
 
         return $this->respondWithToken($accessToken, $refreshToken, $user);

@@ -568,6 +568,28 @@
             </div>
           </div>
 
+          <!-- 登入帳號 -->
+          <div class="detail-section">
+            <div class="section-subtitle-row">
+              <span class="section-subtitle">登入帳號（Portal）</span>
+              <button class="btn btn-secondary btn-xs" @click="openInviteContactModal">＋ 邀請新聯絡人</button>
+            </div>
+            <div v-if="supplierUsersLoading" class="empty-inline">載入中…</div>
+            <div v-else-if="!supplierUsers.length" class="empty-inline">尚無登入帳號</div>
+            <div v-else class="contact-list">
+              <div v-for="u in supplierUsers" :key="u.id" class="contact-row">
+                <div class="contact-info">
+                  <span class="contact-name">{{ u.name }}</span>
+                  <span class="contact-meta font-mono">{{ u.email }}</span>
+                  <span class="contact-meta">{{ u.roles.join(', ') }}</span>
+                </div>
+                <div class="contact-actions">
+                  <span class="badge" :class="u.is_active ? 'badge-green' : 'badge-gray'">{{ u.is_active ? '啟用中' : '已停用' }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- 狀態歷程 Timeline -->
           <div class="detail-section">
             <div class="section-title">狀態歷程</div>
@@ -676,6 +698,36 @@
       </div>
     </div>
 
+    <!-- 邀請新聯絡人 Modal -->
+    <div v-if="showInviteContactModal" class="modal-overlay" @click.self="showInviteContactModal=false">
+      <div class="modal" style="min-width:360px;">
+        <div class="modal-header">
+          <span class="modal-title">邀請新聯絡人</span>
+          <button class="modal-close" @click="showInviteContactModal=false">×</button>
+        </div>
+        <div class="form-group">
+          <label class="form-label">姓名</label>
+          <input v-model="inviteContactForm.name" class="form-input" placeholder="請輸入姓名" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input v-model="inviteContactForm.email" class="form-input" placeholder="請輸入 Email" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">角色</label>
+          <select v-model="inviteContactForm.role" class="form-select">
+            <option value="supplier">供應商聯絡人</option>
+            <option value="sup_esg">供應商 ESG 聯絡人</option>
+          </select>
+        </div>
+        <p v-if="inviteContactError" class="form-hint" style="color:#ef4444;">{{ inviteContactError }}</p>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="showInviteContactModal=false">取消</button>
+          <button class="btn btn-primary" :disabled="isSubmitting" @click="doInviteContact">{{ isSubmitting ? '建立中...' : '建立' }}</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 入選階段流轉 Modal -->
     <div v-if="showTransitionModal" class="modal-overlay" @click.self="showTransitionModal=false">
       <div class="modal" style="min-width:380px;">
@@ -722,7 +774,7 @@ ChartJS.register(
   RadialLinearScale, PointElement, LineElement, Filler,
   Title, Tooltip, Legend
 )
-import { suppliersApi, type Supplier, facilityApi, type SupplierFacility } from '@/api/modules/suppliers'
+import { suppliersApi, type Supplier, facilityApi, type SupplierFacility, supplierUsersApi, type SupplierUser } from '@/api/modules/suppliers'
 import { DISCLOSURE_PREFIX_LABELS } from '@/constants/disclosureDomains'
 import { questionnaireApi, type Questionnaire } from '@/api/modules/questionnaire'
 import { riskApi } from '@/api/modules/risk'
@@ -821,6 +873,13 @@ export default defineComponent({
       // 廠區
       facilities: [] as SupplierFacility[],
       facilitiesLoading: false,
+
+      // 登入帳號（Portal）
+      supplierUsers: [] as SupplierUser[],
+      supplierUsersLoading: false,
+      showInviteContactModal: false,
+      inviteContactForm: { name: '', email: '', role: 'supplier' as 'supplier' | 'sup_esg' },
+      inviteContactError: '',
       showFacilityModal: false,
       facilityForm: {
         id: '' as string,
@@ -1349,7 +1408,40 @@ export default defineComponent({
         if (bomRes.status === 'fulfilled') this.bomRequirements = (bomRes.value.data as any).data ?? []
         this.loadRiskHistory(id)
         this.loadFacilities()
+        this.loadSupplierUsers()
       } finally { this.isLoading = false }
+    },
+
+    async loadSupplierUsers() {
+      const id = this.route.params.id as string
+      this.supplierUsersLoading = true
+      try {
+        const { data } = await supplierUsersApi.list(id)
+        this.supplierUsers = data.data
+      } finally {
+        this.supplierUsersLoading = false
+      }
+    },
+
+    openInviteContactModal() {
+      this.inviteContactForm = { name: '', email: '', role: 'supplier' }
+      this.inviteContactError = ''
+      this.showInviteContactModal = true
+    },
+
+    async doInviteContact() {
+      const id = this.route.params.id as string
+      this.isSubmitting = true
+      this.inviteContactError = ''
+      try {
+        await supplierUsersApi.invite(id, this.inviteContactForm)
+        this.showInviteContactModal = false
+        this.loadSupplierUsers()
+      } catch (e: any) {
+        this.inviteContactError = e?.response?.data?.message || '建立失敗'
+      } finally {
+        this.isSubmitting = false
+      }
     },
 
     async loadRiskHistory(supplierId: string) {

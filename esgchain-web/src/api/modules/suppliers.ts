@@ -361,3 +361,21 @@ export const chemicalApi = {
   acknowledgeAlert: (alertId: string, notes?: string) =>
     http.post<{ success: boolean; data: ChemicalComplianceAlert }>(`/api/v1/chemical-compliance-alerts/${alertId}/acknowledge`, { notes }),
 }
+
+export interface SupplierUser {
+  id: string
+  name: string
+  email: string
+  supplier_id: string
+  is_active: boolean
+  roles: string[]
+  created_at: string
+}
+
+export const supplierUsersApi = {
+  list: (supplierId: string) =>
+    http.get<{ success: boolean; data: SupplierUser[] }>(`/api/v1/suppliers/${supplierId}/users`),
+
+  invite: (supplierId: string, data: { name: string; email: string; role: 'supplier' | 'sup_esg' }) =>
+    http.post<{ success: boolean; data: SupplierUser; message: string }>(`/api/v1/suppliers/${supplierId}/users`, data),
+}
