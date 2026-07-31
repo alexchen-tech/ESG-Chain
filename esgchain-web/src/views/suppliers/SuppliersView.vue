@@ -174,6 +174,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { suppliersApi, supplierGroupsApi, type Supplier, type SupplierGroup } from '@/api/modules/suppliers'
 import { useCompareStore } from '@/stores/compareStore'
 import CompareModal from '@/components/CompareModal.vue'
+import { maskSupplierName } from '@/utils/maskName'
 
 const STATUS_LABELS: Record<string, string> = {
   active: '啟用', suspended: '暫停', terminated: '終止',
@@ -263,6 +264,7 @@ export default defineComponent({
   },
 
   methods: {
+    maskSupplierName,
     async loadGroups() {
       try {
         const { data } = await supplierGroupsApi.list()
