@@ -1,13 +1,13 @@
 <template>
-  <div class="page-container">
-    <div class="page-header">
+  <div class="section-card">
+    <div class="section-header">
       <div>
-        <h1 class="page-title">系統碳價假設</h1>
-        <p class="page-subtitle">設定 CBAM 申報風險金額計算所使用的內部碳成本定價</p>
+        <h2 class="section-title">系統碳價假設</h2>
+        <p class="section-desc">設定 CBAM 申報風險金額計算所使用的內部碳成本定價</p>
       </div>
     </div>
 
-    <div class="card" style="max-width:560px">
+    <div style="max-width:560px">
       <div v-if="isLoading" class="loading-mask">載入中...</div>
       <div v-else>
         <div class="info-block">
@@ -134,6 +134,33 @@ export default defineComponent({
 </script>
 
 <style scoped>
+.section-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+
+.section-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
 .info-block { display: flex; flex-direction: column; gap: 10px; }
 .info-row { display: flex; gap: 16px; align-items: baseline; }
 .info-label { width: 80px; font-size: 13px; color: var(--text-secondary); flex-shrink: 0; }

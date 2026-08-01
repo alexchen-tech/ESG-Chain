@@ -1,19 +1,10 @@
 <template>
-  <div class="page-container">
-    <div class="breadcrumb">
-      <button class="breadcrumb-link" @click="$router.push('/settings')">系統設定</button>
-      <span class="breadcrumb-sep">›</span>
-      <span class="breadcrumb-current">國家風險評等</span>
-    </div>
-
-    <div class="page-header">
+  <div class="section-card">
+    <div class="section-header">
       <div>
-        <h1 class="page-title">國家風險評等</h1>
-        <p class="page-subtitle">各國勞工、環境、地緣政治風險等級（1–5），用於 SAQ 評分後自動推導 RiskAssessment 的 impact 值</p>
+        <h2 class="section-title">國家風險評等</h2>
+        <p class="section-desc">各國勞工、環境、地緣政治風險等級（1–5），用於 SAQ 評分後自動推導 RiskAssessment 的 impact 值</p>
       </div>
-    </div>
-
-    <div class="tab-action-bar">
       <button class="btn btn-primary" @click="openCreate">+ 新增國家</button>
     </div>
 
@@ -287,6 +278,33 @@ export default defineComponent({
 </script>
 
 <style scoped>
+.section-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+
+.section-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
 .risk-badge {
   display: inline-block;
   width: 28px;

@@ -1,9 +1,9 @@
 <template>
-  <div class="page-container">
-    <div class="page-header">
+  <div class="section-card">
+    <div class="section-header">
       <div>
-        <h1 class="page-title">角色管理</h1>
-        <p class="page-subtitle">依模組管理各角色的操作權限，admin 角色固定擁有全部權限，不可調整</p>
+        <h2 class="section-title">角色管理</h2>
+        <p class="section-desc">依模組管理各角色的操作權限，admin 角色固定擁有全部權限，不可調整</p>
       </div>
     </div>
 
@@ -159,6 +159,33 @@ export default defineComponent({
 </script>
 
 <style scoped>
+.section-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+
+.section-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
 .module-section {
   background: var(--surface);
   border: 1px solid var(--border);

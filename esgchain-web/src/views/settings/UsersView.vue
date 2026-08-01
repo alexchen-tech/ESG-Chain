@@ -1,9 +1,9 @@
 <template>
-  <div class="page-container">
-    <div class="page-header">
+  <div class="section-card">
+    <div class="section-header">
       <div>
-        <h1 class="page-title">使用者管理</h1>
-        <p class="page-subtitle">共 {{ pagination.total }} 位中心廠內部使用者</p>
+        <h2 class="section-title">使用者管理</h2>
+        <p class="section-desc">共 {{ pagination.total }} 位中心廠內部使用者</p>
       </div>
       <button class="btn btn-primary" @click="openCreateModal">＋ 新增使用者</button>
     </div>
@@ -458,3 +458,32 @@ export default defineComponent({
   },
 })
 </script>
+
+<style scoped>
+.section-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+
+.section-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+</style>

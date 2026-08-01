@@ -1,9 +1,9 @@
 <template>
-  <div class="market-rules-view">
-    <div class="page-header">
+  <div class="section-card">
+    <div class="section-header">
       <div>
-        <h1 class="page-title">市場合規規則</h1>
-        <p class="page-subtitle">依目標市場定義出口文件合規要求</p>
+        <h2 class="section-title">市場合規規則</h2>
+        <p class="section-desc">依目標市場定義出口文件合規要求</p>
       </div>
       <button class="btn btn-primary" @click="openCreate">+ 新增規則</button>
     </div>
@@ -339,26 +339,29 @@ export default defineComponent({
 .badge-scope { display: inline-block; white-space: nowrap; font-size: 11px; padding: 2px 8px; border-radius: 3px; border: 1px solid var(--border); }
 .badge-scope--product { color: var(--accent); background: #eef4f1; }
 .badge-scope--material { color: var(--text-secondary); background: var(--surface-2); }
-.market-rules-view {
+.section-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
   padding: 24px;
   max-width: 1180px;
 }
 
-.page-header {
+.section-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 28px;
+  margin-bottom: 20px;
 }
 
-.page-title {
-  font-size: 20px;
+.section-title {
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
   margin: 0 0 4px;
 }
 
-.page-subtitle {
+.section-desc {
   font-size: 13px;
   color: var(--text-secondary);
   margin: 0;

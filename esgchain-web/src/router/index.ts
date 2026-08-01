@@ -152,14 +152,16 @@ const router = createRouter({
     },
     {
       path: '/settings/users',
-      name: 'settings-users',
-      component: () => import('@/views/settings/UsersView.vue'),
-      meta: { requiresAuth: true, roles: ['admin'] },
+      redirect: () => ({ path: '/settings/access-control', query: { tab: 'users' } }),
     },
     {
       path: '/settings/roles',
-      name: 'settings-roles',
-      component: () => import('@/views/settings/RolesView.vue'),
+      redirect: () => ({ path: '/settings/access-control', query: { tab: 'roles' } }),
+    },
+    {
+      path: '/settings/access-control',
+      name: 'settings-access-control',
+      component: () => import('@/views/settings/AccessControlHubView.vue'),
       meta: { requiresAuth: true, roles: ['admin'] },
     },
     {
@@ -233,14 +235,19 @@ const router = createRouter({
     },
     {
       path: '/settings/market-rules',
-      name: 'market-rules',
-      component: () => import('@/views/settings/MarketComplianceRulesView.vue'),
-      meta: { requiresAuth: true, roles: ['admin'] },
+      redirect: () => ({ path: '/settings/market-rules-hub', query: { tab: 'rules' } }),
     },
     {
       path: '/settings/country-risk',
-      name: 'country-risk-settings',
-      component: () => import('@/views/settings/CountryRiskView.vue'),
+      redirect: () => ({ path: '/settings/market-rules-hub', query: { tab: 'country-risk' } }),
+    },
+    {
+      path: '/settings/market-rules-hub',
+      name: 'market-rules-hub',
+      component: () => import('@/views/settings/MarketRulesHubView.vue'),
+      // 舊 /settings/country-risk 路由原本額外開放 sustain 角色（非僅 admin），
+      // 為維持整併前後行為一致（design.md Decision 3 前提「全部 tab 皆 admin-only」
+      // 與此不符，見本次實作報告的偏離說明），hub 路由沿用聯集 roles。
       meta: { requiresAuth: true, roles: ['admin', 'sustain'] },
     },
     {

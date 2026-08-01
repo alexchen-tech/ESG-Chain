@@ -155,11 +155,10 @@ const ALL_MENU = [
     roles: ['admin'],
     children: [
       { name: 'settings',         path: '/settings',               label: '一般設定',  roles: ['admin'] },
-      { name: 'settings-users',   path: '/settings/users',         label: '使用者管理', roles: ['admin'] },
-      { name: 'settings-roles',  path: '/settings/roles',         label: '角色管理',   roles: ['admin'] },
+      { name: 'settings-access-control', path: '/settings/access-control', label: '存取控制', roles: ['admin'] },
       { name: 'classification-scoring', path: '/settings/classification-scoring', label: '分類與計分管理', roles: ['admin'] },
+      { name: 'market-rules-hub', path: '/settings/market-rules-hub', label: '市場與合規規則', roles: ['admin'] },
       { name: 'customers',        path: '/settings/customers',       label: '客戶主檔',   roles: ['admin'] },
-      { name: 'market-rules',     path: '/settings/market-rules',    label: '市場合規規則', roles: ['admin'] },
     ],
   },
 ]
