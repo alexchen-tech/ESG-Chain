@@ -30,6 +30,22 @@ export interface SupplierStatusHistory {
   created_at: string
 }
 
+export interface SupplierOrganizationUnitRef {
+  id: string
+  name: string
+  code: string
+}
+
+export interface SupplierOrganizationUnitHistory {
+  id: string
+  from_organization_unit_id: string | null
+  to_organization_unit_id: string | null
+  from_organization_unit: SupplierOrganizationUnitRef | null
+  to_organization_unit: SupplierOrganizationUnitRef | null
+  changed_by: string | null
+  created_at: string
+}
+
 export interface Supplier {
   id: string
   name: string
@@ -43,6 +59,10 @@ export interface Supplier {
   sasb_industry: SasbIndustryRef | null
   group_id: string | null
   group: SupplierGroup | null
+  organization_unit_id: string | null
+  organization_unit: SupplierOrganizationUnitRef | null
+  organization_unit_histories?: SupplierOrganizationUnitHistory[]
+  is_organization_unit_unassigned?: boolean
   contacts: SupplierContact[]
   status_histories: SupplierStatusHistory[]
   risk_score: number | null
@@ -68,6 +88,7 @@ export interface SupplierListParams {
   risk_dim?: string
   risk_probability?: string
   risk_impact?: string
+  organization_unit_id?: string
 }
 
 export const suppliersApi = {
@@ -93,6 +114,9 @@ export const suppliersApi = {
 
   transitionOnboarding: (id: string, onboarding_stage: string, reason?: string) =>
     http.post<{ success: boolean; data: Supplier }>(`/api/v1/suppliers/${id}/onboarding-transition`, { onboarding_stage, reason }),
+
+  updateOrganizationUnit: (id: string, organization_unit_id: string | null) =>
+    http.patch<{ success: boolean; data: Supplier }>(`/api/v1/suppliers/${id}/organization-unit`, { organization_unit_id }),
 
   delete: (id: string) =>
     http.delete(`/api/v1/suppliers/${id}`),

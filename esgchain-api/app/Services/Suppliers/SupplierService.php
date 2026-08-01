@@ -4,24 +4,27 @@ namespace App\Services\Suppliers;
 
 use App\Models\RiskAssessment;
 use App\Models\Supplier;
+use App\Models\User;
 use Illuminate\Pagination\LengthAwarePaginator;
 
 class SupplierService
 {
-    public function list(array $filters = []): LengthAwarePaginator
+    public function list(array $filters = [], ?User $user = null): LengthAwarePaginator
     {
-        $withRelations = ['group', 'contacts' => fn($q) => $q->where('is_primary', true)];
+        $withRelations = ['group', 'organizationUnit', 'contacts' => fn($q) => $q->where('is_primary', true)];
         if (!empty($filters['include_risk'])) {
             $withRelations[] = 'latestRiskAssessment';
         }
 
         $query = Supplier::with($withRelations)
+            ->when($user, fn($q) => $q->visibleTo($user))
             ->when($filters['status'] ?? null, fn($q, $v) => $q->where('status', $v))
             ->when($filters['onboarding_stage'] ?? null, fn($q, $v) => $q->where('onboarding_stage', $v))
             ->when($filters['tier'] ?? null, fn($q, $v) => $q->where('tier', $v))
             ->when($filters['supplier_group_id'] ?? null, fn($q, $v) => $q->where('group_id', $v))
             ->when($filters['country_code'] ?? null, fn($q, $v) => $q->where('country_code', $v))
             ->when($filters['sasb_industry_id'] ?? null, fn($q, $v) => $q->where('sasb_industry_id', $v))
+            ->when($filters['organization_unit_id'] ?? null, fn($q, $v) => $q->where('organization_unit_id', $v))
             ->when($filters['q'] ?? null, fn($q, $v) => $q->where(function ($q) use ($v) {
                 $q->where('name', 'like', "%$v%")->orWhere('code', 'like', "%$v%");
             }))
@@ -88,5 +91,23 @@ class SupplierService
     public function delete(Supplier $supplier): void
     {
         $supplier->delete();
+    }
+
+    /**
+     * 指派/變更/清空供應商的組織單位歸屬，每次變更寫入一筆稽核紀錄（比照 SupplierStatusHistory 模式）。
+     */
+    public function assignOrganizationUnit(Supplier $supplier, ?string $organizationUnitId, string $changedBy): Supplier
+    {
+        $fromId = $supplier->organization_unit_id;
+
+        $supplier->update(['organization_unit_id' => $organizationUnitId]);
+
+        $supplier->organizationUnitHistories()->create([
+            'from_organization_unit_id' => $fromId,
+            'to_organization_unit_id'   => $organizationUnitId,
+            'changed_by'                => $changedBy,
+        ]);
+
+        return $supplier->fresh(['group', 'organizationUnit', 'organizationUnitHistories.fromOrganizationUnit', 'organizationUnitHistories.toOrganizationUnit']);
     }
 }

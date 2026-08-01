@@ -40,6 +40,10 @@
         <option value="">所有分組</option>
         <option v-for="g in supplierGroups" :key="g.id" :value="g.id">{{ g.name }}</option>
       </select>
+      <select v-model="filters.organization_unit_id" class="filter-select" @change="resetAndLoad">
+        <option value="">所有組織單位</option>
+        <option v-for="u in orgUnits" :key="u.id" :value="u.id">{{ u.name }}</option>
+      </select>
       <button class="btn btn-secondary btn-sm" @click="resetAndLoad">搜尋</button>
       <button v-if="hasActiveFilters" class="btn btn-secondary btn-sm" @click="clearFilters">✕ 清除</button>
     </div>
@@ -58,6 +62,7 @@
             <th>代碼</th>
             <th>國家</th>
             <th>層級</th>
+            <th>組織單位</th>
             <th>風險分數</th>
             <th>活躍狀態</th>
             <th style="width:80px;"></th>
@@ -88,6 +93,10 @@
             </td>
             <td>
               <span class="tier-chip" :class="`tier-${s.tier}`">T{{ s.tier }}</span>
+            </td>
+            <td>
+              <span v-if="s.organization_unit" class="badge badge-blue">{{ s.organization_unit.name }}</span>
+              <span v-else class="badge badge-gray">未指派單位</span>
             </td>
             <td>
               <div class="risk-score-cell">
@@ -172,6 +181,7 @@
 import { defineComponent } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { suppliersApi, supplierGroupsApi, type Supplier, type SupplierGroup } from '@/api/modules/suppliers'
+import { orgUnitsApi, type OrgUnit } from '@/api/modules/settings'
 import { useCompareStore } from '@/stores/compareStore'
 import CompareModal from '@/components/CompareModal.vue'
 import { maskSupplierName } from '@/utils/maskName'
@@ -197,8 +207,9 @@ export default defineComponent({
       isSubmitting: false,
       suppliers: [] as Supplier[],
       supplierGroups: [] as SupplierGroup[],
+      orgUnits: [] as OrgUnit[],
       pagination: { current_page: 1, per_page: 20, total: 0, last_page: 1 },
-      filters: { search: '', status: '', tier: '', country_code: '', supplier_group_id: '' },
+      filters: { search: '', status: '', tier: '', country_code: '', supplier_group_id: '', organization_unit_id: '' },
       riskFilter: null as { dim: string; probability: string; impact: string } | null,
       selectedIds: [] as string[],
       showCompareModal: false,
@@ -216,7 +227,7 @@ export default defineComponent({
     },
     hasActiveFilters(): boolean {
       const f = this.filters
-      return !!(f.search || f.status || f.tier || f.country_code || f.supplier_group_id || this.riskFilter)
+      return !!(f.search || f.status || f.tier || f.country_code || f.supplier_group_id || f.organization_unit_id || this.riskFilter)
     },
     riskFilterLabel(): string {
       if (!this.riskFilter) return ''
@@ -261,6 +272,7 @@ export default defineComponent({
     this.selectedIds = this.compareStore.suppliers.map(s => s.id)
     this.loadData()
     this.loadGroups()
+    this.loadOrgUnits()
   },
 
   methods: {
@@ -269,6 +281,13 @@ export default defineComponent({
       try {
         const { data } = await supplierGroupsApi.list()
         this.supplierGroups = data.data
+      } catch { /**/ }
+    },
+
+    async loadOrgUnits() {
+      try {
+        const { data } = await orgUnitsApi.list()
+        this.orgUnits = data.data
       } catch { /**/ }
     },
 
@@ -283,6 +302,7 @@ export default defineComponent({
           tier: this.filters.tier ? Number(this.filters.tier) : undefined,
           country_code: this.filters.country_code || undefined,
           supplier_group_id: this.filters.supplier_group_id || undefined,
+          organization_unit_id: this.filters.organization_unit_id || undefined,
           risk_dim: this.riskFilter?.dim || undefined,
           risk_probability: this.riskFilter?.probability || undefined,
           risk_impact: this.riskFilter?.impact || undefined,
@@ -295,7 +315,7 @@ export default defineComponent({
     resetAndLoad() { this.pagination.current_page = 1; this.loadData() },
 
     clearFilters() {
-      this.filters = { search: '', status: '', tier: '', country_code: '', supplier_group_id: '' }
+      this.filters = { search: '', status: '', tier: '', country_code: '', supplier_group_id: '', organization_unit_id: '' }
       this.riskFilter = null
       this.router.replace({ query: {} })
       this.resetAndLoad()

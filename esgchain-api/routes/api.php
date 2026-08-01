@@ -152,6 +152,10 @@ Route::prefix('v1')->group(function () {
         // 不可由一般 API 手動建立；status 亦僅 ERP sync 可變更，只留 onboarding-transition 給 ESG-Chain 自有狀態機
         Route::apiResource('suppliers', SupplierController::class)->except(['store']);
         Route::post('suppliers/{supplier}/onboarding-transition', [SupplierController::class, 'transitionOnboarding']);
+        // 組織單位指派：與 SupplierController@update（PUT suppliers/{supplier}）比照，屬於一般供應商欄位維護，
+        // 不掛額外 CRUD 權限字串（本模組目前僅 suppliers.manage-users.create 這個細粒度權限，是供應商入口帳號邀請
+        // 專用，與此處純欄位更新無關）——存取控制交由 suppliers 模組層級 RBAC（見 CLAUDE.md 角色權限表）處理。
+        Route::patch('suppliers/{supplier}/organization-unit', [SupplierController::class, 'updateOrganizationUnit']);
         Route::get('suppliers/{supplier}/risk-summary', [SupplierController::class, 'riskSummary']);
         Route::get('suppliers/{supplier}/risk-timeline', [SupplierController::class, 'timeline']);
         Route::get('suppliers/{supplier}/users', [SupplierUserController::class, 'index']);

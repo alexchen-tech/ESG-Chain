@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Services\OrganizationUnit\OrganizationUnitScopeService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -26,7 +28,7 @@ class Supplier extends Model
     ];
 
     protected $fillable = [
-        'group_id', 'name', 'code', 'vat_number', 'erp_vendor_codes',
+        'group_id', 'organization_unit_id', 'name', 'code', 'vat_number', 'erp_vendor_codes',
         'country_code', 'industry', 'industry_group', 'sasb_industry_id', 'tier',
         'status', 'onboarding_stage', 'risk_score', 'impact_score', 'spend_amount',
         'tags', 'profile_completed', 'address', 'website',
@@ -60,6 +62,39 @@ class Supplier extends Model
     public function statusHistories(): HasMany
     {
         return $this->hasMany(SupplierStatusHistory::class);
+    }
+
+    // organization_unit_id 為 ESG-Chain 自有營運欄位，永不隨 ERP 同步覆蓋（見 ErpSyncService::ERP_OWNED_SUPPLIER_FIELDS）
+    public function organizationUnit(): BelongsTo
+    {
+        return $this->belongsTo(OrganizationUnit::class, 'organization_unit_id');
+    }
+
+    public function organizationUnitHistories(): HasMany
+    {
+        return $this->hasMany(SupplierOrganizationUnitHistory::class)->orderBy('created_at', 'desc');
+    }
+
+    /**
+     * 依使用者所屬組織單位的可視子樹過濾供應商清單。刻意設計為 local scope 而非 global scope，
+     * 避免 ERP 同步內部查詢、admin 稽核匯出等場景被隱性套用範圍限制（見 design.md Decision 2）。
+     *
+     * 過濾規則：
+     * - $user->organization_unit_id 為 null（如 admin）→ 視為全域可見，不套用過濾
+     * - 否則 → organization_unit_id 為 null（未指派單位）OR 屬於使用者可視子樹，兩者皆可見
+     */
+    public function scopeVisibleTo(Builder $query, User $user): Builder
+    {
+        if ($user->organization_unit_id === null) {
+            return $query;
+        }
+
+        $visibleUnitIds = app(OrganizationUnitScopeService::class)->visibleUnitIds($user);
+
+        return $query->where(function (Builder $q) use ($visibleUnitIds) {
+            $q->whereNull('organization_unit_id')
+                ->orWhereIn('organization_unit_id', $visibleUnitIds);
+        });
     }
 
     public function users(): HasMany

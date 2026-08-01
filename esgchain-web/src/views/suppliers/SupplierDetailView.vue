@@ -135,6 +135,14 @@
                   </span>
                 </span>
               </div>
+              <div class="detail-item">
+                <span class="detail-label">組織單位</span>
+                <span style="display:flex;align-items:center;gap:8px;">
+                  <span v-if="supplier.organization_unit" class="badge badge-blue">{{ supplier.organization_unit.name }}</span>
+                  <span v-else class="badge badge-gray">未指派單位</span>
+                  <button class="btn btn-secondary btn-xs" @click="openOrgUnitModal">指派</button>
+                </span>
+              </div>
             </div>
           </div>
 
@@ -610,6 +618,25 @@
             </div>
           </div>
 
+          <!-- 組織單位變更歷程 -->
+          <div class="detail-section">
+            <div class="section-title">組織單位變更歷程</div>
+            <div v-if="!supplier.organization_unit_histories?.length" class="empty-inline">尚無組織單位變更記錄</div>
+            <div v-else class="timeline">
+              <div v-for="h in supplier.organization_unit_histories" :key="h.id" class="timeline-item">
+                <div class="timeline-dot" />
+                <div class="timeline-content">
+                  <div class="timeline-title">
+                    <span class="badge" :class="h.from_organization_unit ? 'badge-blue' : 'badge-gray'">{{ h.from_organization_unit?.name ?? '未指派單位' }}</span>
+                    <span class="timeline-arrow">→</span>
+                    <span class="badge" :class="h.to_organization_unit ? 'badge-blue' : 'badge-gray'">{{ h.to_organization_unit?.name ?? '未指派單位' }}</span>
+                  </div>
+                  <div class="timeline-time">{{ formatDateTime(h.created_at) }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
         </div><!-- /facility -->
 
       </div><!-- /detail-main -->
@@ -757,6 +784,35 @@
       </div>
     </div>
 
+    <!-- 指派/變更組織單位 Modal -->
+    <div v-if="showOrgUnitModal" class="modal-overlay" @click.self="showOrgUnitModal=false">
+      <div class="modal" style="min-width:380px;">
+        <div class="modal-header">
+          <span class="modal-title">指派組織單位</span>
+          <button class="modal-close" @click="showOrgUnitModal=false">×</button>
+        </div>
+        <p style="font-size:14px;color:var(--text-secondary);margin-bottom:16px;">
+          目前歸屬：
+          <span class="badge" :class="supplier?.organization_unit ? 'badge-blue' : 'badge-gray'">
+            {{ supplier?.organization_unit?.name ?? '未指派單位' }}
+          </span>
+        </p>
+        <div class="form-group">
+          <label class="form-label">組織單位</label>
+          <select v-model="orgUnitForm.organization_unit_id" class="form-select" :disabled="orgUnitsLoading">
+            <option value="">— 未指派 —</option>
+            <option v-for="u in orgUnits" :key="u.id" :value="u.id">{{ u.name }}</option>
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="showOrgUnitModal=false">取消</button>
+          <button class="btn btn-primary" :disabled="isSubmitting" @click="doAssignOrgUnit">
+            {{ isSubmitting ? '更新中...' : '確認更新' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -778,7 +834,7 @@ import { suppliersApi, type Supplier, facilityApi, type SupplierFacility, suppli
 import { DISCLOSURE_PREFIX_LABELS } from '@/constants/disclosureDomains'
 import { questionnaireApi, type Questionnaire } from '@/api/modules/questionnaire'
 import { riskApi } from '@/api/modules/risk'
-import { settingsApi, type SasbIndustry, type SupplierGroup } from '@/api/modules/settings'
+import { settingsApi, orgUnitsApi, type SasbIndustry, type SupplierGroup, type OrgUnit } from '@/api/modules/settings'
 import { supplierBomRequirementsApi, type BomRequirementProduct } from '@/api/modules/compliance'
 import { maskSupplierName } from '@/utils/maskName'
 import CountrySelect from '@/components/common/CountrySelect.vue'
@@ -849,6 +905,13 @@ export default defineComponent({
       questionnaires: [] as Questionnaire[],
       showTransitionModal: false,
       transitionForm: { onboarding_stage: 'invited', reason: '' },
+
+      // 組織單位指派
+      showOrgUnitModal: false,
+      orgUnitForm: { organization_unit_id: '' as string },
+      orgUnits: [] as OrgUnit[],
+      orgUnitsLoading: false,
+      orgUnitsLoaded: false,
 
       // Edit mode
       isEditing: false,
@@ -1478,6 +1541,33 @@ export default defineComponent({
 
     cancelEdit() {
       this.isEditing = false
+    },
+
+    // ── 組織單位指派 ──
+    async openOrgUnitModal() {
+      if (!this.supplier) return
+      this.orgUnitForm = { organization_unit_id: this.supplier.organization_unit_id ?? '' }
+      this.showOrgUnitModal = true
+      if (!this.orgUnitsLoaded) {
+        this.orgUnitsLoading = true
+        try {
+          const { data } = await orgUnitsApi.list()
+          this.orgUnits = data.data
+          this.orgUnitsLoaded = true
+        } finally { this.orgUnitsLoading = false }
+      }
+    },
+
+    async doAssignOrgUnit() {
+      if (!this.supplier) return
+      this.isSubmitting = true
+      try {
+        await suppliersApi.updateOrganizationUnit(this.supplier.id, this.orgUnitForm.organization_unit_id || null)
+        this.showOrgUnitModal = false
+        await this.loadData()
+      } catch (e: any) {
+        alert(e?.response?.data?.message ?? '更新失敗，請稍後再試')
+      } finally { this.isSubmitting = false }
     },
 
     async saveEdit() {

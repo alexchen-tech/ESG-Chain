@@ -27,10 +27,12 @@ class SupplierController extends Controller
         $includeRisk = $request->boolean('include_risk');
         if ($includeRisk) $filters['include_risk'] = true;
 
-        $paginated = $this->service->list($filters);
+        $filters['organization_unit_id'] = $request->query('organization_unit_id');
+        $paginated = $this->service->list($filters, $request->user());
 
         $items = collect($paginated->items())->map(function ($supplier) use ($includeRisk) {
             $arr = $supplier->toArray();
+            $arr['is_organization_unit_unassigned'] = $supplier->organization_unit_id === null;
             if ($includeRisk) {
                 $ra = $supplier->latestRiskAssessment;
                 $arr['latest_risk'] = $ra ? [
@@ -60,11 +62,20 @@ class SupplierController extends Controller
 
     public function show(Supplier $supplier): JsonResponse
     {
+        $supplier->load([
+            'group', 'sasbIndustry', 'contacts', 'organizationUnit',
+            'organizationUnitHistories.fromOrganizationUnit', 'organizationUnitHistories.toOrganizationUnit',
+            'statusHistories' => function ($q) {
+                $q->orderBy('created_at', 'desc');
+            },
+        ]);
+
+        $data = $supplier->toArray();
+        $data['is_organization_unit_unassigned'] = $supplier->organization_unit_id === null;
+
         return response()->json([
             'success' => true,
-            'data' => $supplier->load(['group', 'sasbIndustry', 'contacts', 'statusHistories' => function ($q) {
-                $q->orderBy('created_at', 'desc');
-            }]),
+            'data' => $data,
             'message' => '',
         ]);
     }
@@ -88,6 +99,25 @@ class SupplierController extends Controller
             'success' => true,
             'data' => $updated,
             'message' => '供應商更新成功',
+        ]);
+    }
+
+    public function updateOrganizationUnit(Request $request, Supplier $supplier): JsonResponse
+    {
+        $validated = $request->validate([
+            'organization_unit_id' => ['nullable', 'uuid', 'exists:organization_units,id'],
+        ]);
+
+        $updated = $this->service->assignOrganizationUnit(
+            $supplier,
+            $validated['organization_unit_id'] ?? null,
+            $request->user()->id
+        );
+
+        return response()->json([
+            'success' => true,
+            'data'    => $updated,
+            'message' => '供應商組織單位已更新',
         ]);
     }
 
