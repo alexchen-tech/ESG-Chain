@@ -16,16 +16,25 @@ class OrganizationUnitService
     public function getTree(): array
     {
         $all = $this->getAll()->keyBy('id');
-        $roots = [];
+        $childrenMap = [];
 
         foreach ($all as $unit) {
-            $unit->children_list = [];
+            $childrenMap[$unit->id] = [];
         }
 
         foreach ($all as $unit) {
             if ($unit->parent_id && $all->has($unit->parent_id)) {
-                $all[$unit->parent_id]->children_list[] = $unit;
-            } else {
+                $childrenMap[$unit->parent_id][] = $unit;
+            }
+        }
+
+        foreach ($all as $unit) {
+            $unit->setAttribute('children_list', $childrenMap[$unit->id]);
+        }
+
+        $roots = [];
+        foreach ($all as $unit) {
+            if (!$unit->parent_id || !$all->has($unit->parent_id)) {
                 $roots[] = $unit;
             }
         }
