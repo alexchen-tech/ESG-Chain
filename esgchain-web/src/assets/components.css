@@ -558,30 +558,21 @@
 
 .detail-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px 32px;
 }
 @media (max-width: 640px) {
   .detail-grid { grid-template-columns: 1fr; }
 }
 
-/* 欄與列的分隔線都加深、加粗一階，跟一般表格的淡邊界（#f0ede6）拉開層次 */
+/* 欄位寬度依內容自動換行填滿（auto-fill），不再固定死板兩欄，避免寬螢幕上欄位被拉得過寬、留白過多 */
 .detail-item {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  padding: 15px 18px 15px 0;
+  padding-bottom: 14px;
   border-bottom: 1.5px solid var(--border);
 }
-.detail-item:nth-child(odd) {
-  padding-right: 34px;
-  border-right: 1.5px solid var(--border);
-}
-.detail-item:nth-child(even) {
-  padding-left: 34px;
-  padding-right: 0;
-}
-.detail-grid .detail-item:nth-last-child(-n+2) { border-bottom: none; }
 
 .detail-label {
   font-size: 12.5px;

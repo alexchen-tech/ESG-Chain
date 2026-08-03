@@ -14,9 +14,8 @@
         'sidebar-mobile-open': isMobile && uiStore.sidebarMobileOpen,
       }"
     >
-      <!-- 頂部：Logo + 漢堡按鈕 -->
+      <!-- 頂部：漢堡按鈕 -->
       <div class="sidebar-top">
-        <span v-show="!uiStore.sidebarCollapsed || isMobile" class="logo-text">ESG·Chain</span>
         <button class="hamburger-btn" @click="toggleHandler">☰</button>
       </div>
 
@@ -284,20 +283,11 @@ export default defineComponent({
 .sidebar-top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 18px 12px 16px;
   border-bottom: 1px solid rgba(255,255,255,0.08);
   min-height: 60px;
   flex-shrink: 0;
-}
-
-.logo-text {
-  font-family: var(--font-title);
-  font-size: 17px;
-  font-weight: 700;
-  color: #fff;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
 }
 
 .hamburger-btn {
